@@ -1,0 +1,44 @@
+version: '3.7'
+services:
+
+  db_manager:
+    build: ./Data_module
+    container_name: db_manager
+    restart: always
+    environment:
+      - APP_NAME=MyFlaskApp
+    ports:
+      - 5001:5001
+      
+  pm_manager:
+    build: ./PM_module
+    container_name: pm_manager
+    volumes:
+      - type: volume
+        source: models
+        target: /models
+        volume:
+          nocopy: true
+    restart: always
+    environment:
+      - APP_NAME=MyFlaskApp
+    ports:
+      - 5002:5002
+
+  regional_manager:
+    build: ./Regional_manager_module
+    container_name: regional_manager
+    volumes:
+      - type: volume
+        source: models
+        target: /models
+        volume:
+          nocopy: true
+    restart: always
+    environment:
+      - APP_NAME=MyFlaskApp
+    ports:
+      - 5000:5000
+
+volumes:
+    models:
