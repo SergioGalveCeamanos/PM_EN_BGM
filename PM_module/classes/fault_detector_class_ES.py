@@ -558,24 +558,25 @@ class residual:
      def model_uncertainty(self,errors,option='default'):
          self.kde_stats={}
          self.kde={}
+         # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
              kde_data=pd.DataFrame({'error':errors[t]})
              #print(kde_data)
              #is it ok to get the std from such small subsample?
              train_stats = kde_data.describe()
              self.kde_stats[t] = train_stats.transpose()
-             normed_data = self.norm(kde_data,self.kde_stats[t])
-             normed_data=normed_data.dropna()
+             #normed_data = self.norm(kde_data,self.kde_stats[t])
+             #normed_data=normed_data.dropna()
              #kde_data.plot.kde()
              grid = GridSearchCV(KernelDensity(),
                         {'bandwidth': np.linspace(0.01, 10, 20)},
                         cv=3) # 20-fold cross-validation
-             grid.fit(normed_data.values)
+             grid.fit(kde_data.values)
              
              #print(grid.best_params_)
              # construct a kernel density estimate of the distribution
              self.kde[t] = KernelDensity(bandwidth=grid.best_params_['bandwidth'], metric='euclidean',kernel='gaussian', algorithm='ball_tree')
-             self.kde[t].fit(normed_data.values)
+             self.kde[t].fit(kde_data.values)
             
              
      def predict(self,new_data,plot='No'):
@@ -602,7 +603,7 @@ class residual:
          return error,groups
      
         
-     def sample_score(self,variable_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,conf_factor=0.01,samples=[300,50]):                 
+     def sample_score(self,variable_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,conf_factor=0.01,samples=[300,50]):                    
          label_num=-1
          for k in range(len(variable_set)):
              sample=variable_set[k]
@@ -613,39 +614,21 @@ class residual:
                  new_cut=[]
                  new_measure=[]
                  new_max=[]
-                 for y in np.linspace(m_y[t][0],m_y[t][1],samples[0]):
-                     n=[((y-self.kde_stats[t].loc["error","mean"])/self.kde_stats[t].loc["error","std"])]
-                     i=0
-                     for name in plt_names:
-                         n.append(((sample[i]-self.kde_stats[t].loc[name,"mean"])/self.kde_stats[t].loc[name,"std"]))
-                         i=i+1
-                     new_cut.append(n)
+                 new_cut = np.linspace(m_y[t][0],m_y[t][1],samples[0]).reshape(-1,1)
                  Z=np.exp(self.kde[t].score_samples(new_cut))
-                 mp=new_cut[np.where(Z == max(Z))[0][0]][0]
-                 max_point=[((mp*self.kde_stats[t].loc["error","std"])+self.kde_stats[t].loc["error","mean"])]
+                 mp=new_cut[np.where(Z == max(Z))[0][0]]
+                 max_point=mp
                  #print(max_point)
                  integral=sum(Z)
                  if integral>0:
                      P=Z/integral
                      #second get the sensor accuracy area
                      area=[(sample[0]-sensor_acc*self.kde_stats[t].loc["error","std"]),(sample[0]+sensor_acc*self.kde_stats[t].loc["error","std"])]
-                     for y in np.linspace(area[0],area[1],samples[1]):
-                         n=[((y-self.kde_stats[t].loc["error","mean"])/self.kde_stats[t].loc["error","std"])]
-                         i=0
-                         for name in plt_names:
-                             n.append(((sample[i]-self.kde_stats[t].loc[name,"mean"])/self.kde_stats[t].loc[name,"std"]))
-                             i=i+1
-                         new_measure.append(n)
+                     new_measure= np.linspace(area[0],area[1],samples[1]).reshape(-1,1)
                          
                      #using the point that got bigger probability to get the reference A_max for the confidence computation
                      area_max=[(max_point-sensor_acc*self.kde_stats[t].loc["error","std"]),(max_point+sensor_acc*self.kde_stats[t].loc["error","std"])]
-                     for y in np.linspace(area_max[0],area_max[1],samples[1]):
-                         n_max=[((y-self.kde_stats[t].loc["error","mean"])/self.kde_stats[t].loc["error","std"])]
-                         i=0
-                         for name in plt_names:
-                             n_max.append(((sample[i]-self.kde_stats[t].loc[name,"mean"])/self.kde_stats[t].loc[name,"std"]))
-                             i=i+1
-                         new_max.append(n_max[0])
+                     new_max= np.linspace(area_max[0],area_max[1],samples[1]).reshape(-1,1)
                      #assume width 1 to simplify the integral of the full fampling and scale for the other
                      width_full=(m_y[t][1]-m_y[t][0])/samples[0]
                      width_measure=(area[1]-area[0])/samples[1]
@@ -658,10 +641,10 @@ class residual:
                      for j in range((len(P)-1)):
                          acc=acc+P[j]
                          if acc<conf_factor and (acc+P[j+1])>conf_factor:
-                             nlow=(new_cut[j][0]*self.kde_stats[t].loc["error","std"]+self.kde_stats[t].loc["error","mean"])
+                             nlow=new_cut[j][0]
                              low[str(label_num+sample_n)]=nlow
                          if acc<(1-conf_factor) and (acc+P[j+1])>(1-conf_factor):
-                             nhigh=(new_cut[j][0]*self.kde_stats[t].loc["error","std"]+self.kde_stats[t].loc["error","mean"])
+                             nhigh=new_cut[j][0]
                              high[str(label_num+sample_n)]=nhigh
                      errors[str(label_num+sample_n)]=sample[0]
                      if ((sample[0]>nlow) and (sample[0]<nhigh)):
@@ -673,8 +656,8 @@ class residual:
              except RuntimeWarning:
                  avoid.append(str(label_num+sample_n))
                  print('  - Runtime Warning in Score!')
+                 
      def score(self,variables,groups,dic_fill,plt_names,times,option='default',std=5):        
-
          m_y={}
          for t in self.regions:
              m_y[t]=[(self.kde_stats[t].loc["error","mean"]-std*self.kde_stats[t].loc["error","std"]),(self.kde_stats[t].loc["error","mean"]+std*self.kde_stats[t].loc["error","std"])]
@@ -747,49 +730,28 @@ class residual:
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' prediction computing time ---> '+str(dif))
          # select the values for the scores
-         """try:
-             uncertainty_dic={}
-             for name in self.kde_dims:
-                 if (name not in self.source) and name!=self.objective:
-                     uncertainty_dic[name] = data.pop(name)
-                 else:
-                     uncertainty_dic[name] = data.loc[:,name]
-             variables=pd.DataFrame(uncertainty_dic)
-         except Exception as e:
-             print(e)"""
+
          #arrange the values for the kde evaluation
          #kde_data,plt_names=self.kde_gathering(errors,data_2,option2)
 
          kde_data=pd.DataFrame({'error':errors})
          plt_names=[]
          times=data_2['timestamp']
-         normed_kde=pd.DataFrame({'error':np.zeros(kde_data.shape[0])})
-         for t in self.regions:
+         #normed_kde=pd.DataFrame({'error':np.zeros(kde_data.shape[0])})
+         """for t in self.regions:
              locats=np.where(groups == t)[0]
              selection=kde_data.iloc[locats]
              if selection.shape[0]!=0:
                  #print('[i] Region #'+str(t))
                  #print(self.kde_stats)
-                 normed_kde.iloc[locats]=self.norm(selection,self.kde_stats[t])
+                 normed_kde.iloc[locats]=self.norm(selection,self.kde_stats[t])"""
          kde_arr=[]
          i=-1
-         
-         """for index, row in normed_kde.iterrows():
-             i=i+1
-             next_row=[errors.values[i]]
-             if option2=='default':
-                 for name in self.kde_dims:
-                     next_row.append(row[name])
-             elif option2=='Q_app':
-                 next_row.append(row[option2])
-                 next_row.append(row[self.kde_dims[3]])
-             elif option2=='PCA':
-                 next_row.append(row['PCA'])
-             kde_arr.append(next_row)"""
+
          # get scores
          t_a=datetime.datetime.now()
          dic_fill={}
-         forget=self.score(normed_kde,groups,dic_fill,plt_names,times)
+         forget=self.score(kde_data,groups,dic_fill,plt_names,times)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))

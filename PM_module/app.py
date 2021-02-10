@@ -112,6 +112,7 @@ def cycle():
                     upload_results(to_write,'analysis')
                     # Now get forecasts
                     new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=task['version'])
+                    print(new_conf)
                     upload_results(new_conf,'configuration')
                     upload_results(forecast_docs,'forecasts')
                     if do_prob or do_prob_fore:
@@ -121,6 +122,7 @@ def cycle():
                         probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=task['version'])
                         upload_results(probabilities,'probabilities')
                         report=generate_report(to_write,probabilities,forecast_docs,mso_set,size_mavg=20,version=task['version'])
+                        print(report)
                         upload_results(report,'report')
     
                 else:

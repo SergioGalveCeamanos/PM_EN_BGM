@@ -175,7 +175,7 @@ class elastic_manager:
              helpers.bulk(self.client, data, index=ind,doc_type='diagnosis')
          except:
              response=False
-             print(' [!] Error uploading forecast')
+             print(' [!] Error uploading pm_data')
              traceback.print_exc()
          return response
      
@@ -300,7 +300,7 @@ class elastic_manager:
              helpers.bulk(self.client, data, index=ind,doc_type='bayesian')
          except:
              response=False
-             print(' [!] Error uploading forecast')
+             print(' [!] Error uploading probability')
              traceback.print_exc()
          return response
      
@@ -315,11 +315,16 @@ class elastic_manager:
          try:
              response=self.client.create(index=ind,id=id_es,body=b,doc_type='pm_configuration')
          except:
-             print(' [!] Error uploading configuration')
-             traceback.print_exc()
+             try:
+                 print('[I] Trying to delete old document - Configuration.')
+                 response=self.client.delete(index=ind,id=id_es,doc_type='pm_configuration')
+                 response=self.client.create(index=ind,id=id_es,body=b,doc_type='pm_configuration')
+             except:
+                 print(' [!] Error uploading configuration')
+                 traceback.print_exc()
          return response
      
-     #LOAD Configuration: Resulting from each forecast computation 
+     #LOAD Report: Resulting from each summary report
      def load_report(self,data):
          ty='rep_'
          self.connect()
@@ -330,8 +335,13 @@ class elastic_manager:
          try:
              response=self.client.create(index=ind,id=id_es,body=b,doc_type='report')
          except:
-             print(' [!] Error uploading configuration')
-             traceback.print_exc()
+             try:
+                 print('[I] Trying to delete old document - Report.')
+                 response=self.client.delete(index=ind,id=id_es,doc_type='report')
+                 response=self.client.create(index=ind,id=id_es,body=b,doc_type='report')
+             except:
+                 print(' [!] Error uploading Report')
+                 traceback.print_exc()
          return response
      #DOWNLOAD Configuration: Resulting from each forecast computation 
      def get_configuration(self,times,version):

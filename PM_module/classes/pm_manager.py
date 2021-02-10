@@ -52,7 +52,6 @@ def get_available_models():
     return devices
 
 def get_analysis(device,time_start,time_stop,version="",aggSeconds=5):
-
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])

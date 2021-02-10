@@ -166,7 +166,7 @@ def upload_report():
         response=em.load_report(data)
         worked='True'
     except:
-        print('[¡] Error loading configuration to DB')  
+        print('[¡] Error loading report to the DB')  
         traceback.print_exc()
         worked='False'
     #except:
