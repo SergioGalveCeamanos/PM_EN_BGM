@@ -504,6 +504,7 @@ class residual:
                          test_set_r2 = 0
                    
                      new_model['model']=lin_reg_mod
+                     new_model['cov']=X_train.cov()
                      new_model['r2_score']=test_set_r2
                      new_model['rmse_score']=test_set_rmse
                      new_model['y_test']=y_test
@@ -527,7 +528,7 @@ class residual:
              kde_tr=data_grouped[source]
              kde_ts=data_grouped[objective]
              kde_fore=self.model[t]['model'].predict(kde_tr)
-             kde_feed[t]=kde_ts.values-kde_fore
+             kde_feed[t]={'error':kde_ts.values-kde_fore,'data':kde_tr}
          
          #print("Size of samples provided to KDE: "+str(len(uncertainty_vars)))
          print('  ')
@@ -555,40 +556,36 @@ class residual:
      #      https://towardsdatascience.com/a-hitchhikers-guide-to-mixture-density-networks-76b435826cca
      # KDE implementations comparison
      #      https://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
-     def model_uncertainty(self,errors,option='default'):
-         self.kde_stats={}
-         self.kde={}
+     def model_uncertainty(self,data,option='default'):
+         self.hos={}
+         self.lamdas={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
-             kde_data=pd.DataFrame({'error':errors[t]})
-             #print(kde_data)
-             #is it ok to get the std from such small subsample?
-             train_stats = kde_data.describe()
-             self.kde_stats[t] = train_stats.transpose()
-             #normed_data = self.norm(kde_data,self.kde_stats[t])
-             #normed_data=normed_data.dropna()
-             #kde_data.plot.kde()
-             grid = GridSearchCV(KernelDensity(),
-                        {'bandwidth': np.linspace(0.01, 10, 20)},
-                        cv=3) # 20-fold cross-validation
-             grid.fit(kde_data.values)
-             
-             #print(grid.best_params_)
-             # construct a kernel density estimate of the distribution
-             self.kde[t] = KernelDensity(bandwidth=grid.best_params_['bandwidth'], metric='euclidean',kernel='gaussian', algorithm='ball_tree')
-             self.kde[t].fit(kde_data.values)
+             ho=self.model[t]['cov'].values
+             err=data[t]['error']
+             tel=data[t]['data']
+             trial=[]
+             for i in range(len(err)):
+                 val=tel.iloc[i].values
+                 nor=np.linalg.norm(val.dot(ho),ord=1)
+                 trial.append(abs(err[i])/nor)
+             self.lamdas[t]=max(trial)
+             self.hos[t]=ho
             
-             
-     def predict(self,new_data,plot='No'):
-         # given a DF we clean it, norm it, classify it and make a prediction to each sample depending on its position                
+     # to use it in many places ...
+     def get_prediction_input(self,new_data):
          for name in list(new_data.columns):
              if (name not in self.source) and (name!=self.objective) and (name not in self.cont_cond):
                  new_data=new_data.drop([name],axis=1)
          # the prediction is over the normed GOAL
          normed_predict_data = self.norm(new_data,self.train_stats)
+         return normed_predict_data
+     
+     def predict(self,new_data,plot='No'):
+         # given a DF we clean it, norm it, classify it and make a prediction to each sample depending on its position                
+         normed_predict_data=self.get_prediction_input(new_data)
          measured_value=normed_predict_data[self.objective]
          source_value=normed_predict_data[self.source]
-         
          groups=self.bgm.predict(normed_predict_data[self.cont_cond].values)
          predictions=np.zeros(source_value.shape[0])
          for t in self.regions:
@@ -600,14 +597,26 @@ class residual:
          error = measured_value - predictions  
          print('Errors generated')
          print(error)
+
          return error,groups
+     # just the adjustment of x given the gaussian params (usually center on 0), x must be an array of np
+     def gaussian(self,x,sig,mu=0):
+         return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+     
+     # given the set of samples we evaluate how liekly are those errors to happen -- For the zonotope approach
+     def get_probs(self,telem,error_set,group):
+         lim=self.lamdas[group]*np.linalg.norm(telem.dot(self.hos[group]),ord=1)
+         probs=self.gaussian(error_set,lim/2)
+         return probs
+     
      
         
-     def sample_score(self,variable_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,conf_factor=0.01,samples=[300,50]):                    
+     def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,conf_factor=0.01,samples=[300,50]):                    
          label_num=-1
          for k in range(len(variable_set)):
              sample=variable_set[k]
              t=group_set[k]
+             telem=telem_set.iloc[k].values
              label_num=label_num+1
              try:
                  #first get the whole area
@@ -615,7 +624,7 @@ class residual:
                  new_measure=[]
                  new_max=[]
                  new_cut = np.linspace(m_y[t][0],m_y[t][1],samples[0]).reshape(-1,1)
-                 Z=np.exp(self.kde[t].score_samples(new_cut))
+                 Z=self.get_probs(telem,new_cut,t)
                  mp=new_cut[np.where(Z == max(Z))[0][0]]
                  max_point=mp
                  #print(max_point)
@@ -632,9 +641,9 @@ class residual:
                      #assume width 1 to simplify the integral of the full fampling and scale for the other
                      width_full=(m_y[t][1]-m_y[t][0])/samples[0]
                      width_measure=(area[1]-area[0])/samples[1]
-                     Z_m=np.exp(self.kde[t].score_samples(new_measure))
+                     Z_m=self.get_probs(telem,new_measure,t)
                      integral_measure=sum(Z_m)*width_measure/width_full
-                     Z_max=np.exp(self.kde[t].score_samples(new_max))
+                     Z_max=self.get_probs(telem,new_max,t)
                      A_max=sum(Z_max)*width_measure/width_full
                      acc=0
                      #97% confidence
@@ -657,7 +666,7 @@ class residual:
                  avoid.append(str(label_num+sample_n))
                  print('  - Runtime Warning in Score!')
                  
-     def score(self,variables,groups,dic_fill,plt_names,times,option='default',std=5):        
+     def score(self,variables,telemetry,groups,dic_fill,plt_names,times,option='default',std=5):        
          m_y={}
          for t in self.regions:
              m_y[t]=[(self.kde_stats[t].loc["error","mean"]-std*self.kde_stats[t].loc["error","std"]),(self.kde_stats[t].loc["error","mean"]+std*self.kde_stats[t].loc["error","std"])]
@@ -676,7 +685,7 @@ class residual:
          for i in range(proc):
              sample_n=sample_start
              sample_stop=int((i+1)*(len(variables))/proc)
-             p = multiprocessing.Process(target=self.sample_score, args=(variables[sample_start:sample_stop].values,groups[sample_start:sample_stop],m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid))
+             p = multiprocessing.Process(target=self.sample_score, args=(variables[sample_start:sample_stop].values,telemetr[sample_start:sample_stop],groups[sample_start:sample_stop],m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid))
              p.start()
              jobs.append(p)
              sample_start=sample_stop
@@ -728,6 +737,8 @@ class residual:
          errors,groups=self.predict(data_2)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
+         normed_predict_data=self.get_prediction_input(new_data)
+         source_telemetry=normed_predict_data[self.source]
          print('    [*] MSO'+str(self.mso_index)+' prediction computing time ---> '+str(dif))
          # select the values for the scores
 
@@ -751,7 +762,7 @@ class residual:
          # get scores
          t_a=datetime.datetime.now()
          dic_fill={}
-         forget=self.score(kde_data,groups,dic_fill,plt_names,times)
+         forget=self.score(kde_data,source_telemetry,groups,dic_fill,plt_names,times)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))
