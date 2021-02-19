@@ -51,7 +51,8 @@ def get_available_models():
             devices['available_models'].append(m[6:])
     return devices
 
-def get_analysis(device,time_start,time_stop,version="",aggSeconds=5):
+def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],extra_name=[]):
+
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
@@ -84,12 +85,16 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5):
     #print(filt_db)
     do_prob=False
     result=[]
+    
     if filt_db.shape[0]>5:
     # CHECK MISSING: is the next horizon among these two windows ... should we reevaluate (rewrite some samples in DB) everytime otherwise?
         times=filt_db['timestamp']
         try:
             t_a=datetime.datetime.now()
-            return_dic,forget=fm.evaluate_data(manual_data=filt_db)
+            if option!=[]:
+                return_dic,forget=fm.evaluate_data(manual_data=filt_db,option=option)
+            else:
+                return_dic,forget=fm.evaluate_data(manual_data=filt_db)
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print('  [T] TOTAL evaluation computing time ---> '+str(dif))
@@ -114,7 +119,10 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5):
                 if times.loc[i] in transition_filtered:
                     if transition_filtered[times.loc[i]]:
                         new={}
-                        new={'timestamp':times.loc[i],'device':str(device),'trained_version':version}
+                        if extra_name!=[]:
+                            new={'timestamp':times.loc[i],'device':str(device),'trained_version':version+extra_name}
+                        else:
+                            new={'timestamp':times.loc[i],'device':str(device),'trained_version':version}
                         errors=[]
                         low_bounds=[]
                         high_bounds=[]

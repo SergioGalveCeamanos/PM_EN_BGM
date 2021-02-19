@@ -442,7 +442,7 @@ class residual:
          while not_converged:
              try:
                  grid = GridSearchCV(BayesianGaussianMixture(),
-                            {'weight_concentration_prior': np.linspace(0.00001,1000, 30),'tol':[tole],'n_components':[6],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
+                            {'weight_concentration_prior': np.linspace(0.00001,1000, 30),'tol':[tole],'n_components':[5],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
                  print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
                  print(self.cont_cond)
                  print(normed_kde)
@@ -559,11 +559,17 @@ class residual:
      def model_uncertainty(self,data,option='default'):
          self.hos={}
          self.lamdas={}
+         self.kde_stats={}
+         self.kde={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
+             
              ho=self.model[t]['cov'].values
              err=data[t]['error']
              tel=data[t]['data']
+             kde_data=pd.DataFrame({'error':err})
+             train_stats = kde_data.describe()
+             self.kde_stats[t] = train_stats.transpose()
              trial=[]
              for i in range(len(err)):
                  val=tel.iloc[i].values
@@ -572,6 +578,23 @@ class residual:
              self.lamdas[t]=max(trial)
              self.hos[t]=ho
             
+             kde_data=pd.DataFrame({'error':err})
+             #print(kde_data)
+             #is it ok to get the std from such small subsample?
+             train_stats = kde_data.describe()
+             self.kde_stats[t] = train_stats.transpose()
+             #normed_data = self.norm(kde_data,self.kde_stats[t])
+             #normed_data=normed_data.dropna()
+             #kde_data.plot.kde()
+             grid = GridSearchCV(KernelDensity(),
+                        {'bandwidth': np.linspace(0.01, 10, 20)},
+                        cv=3) # 20-fold cross-validation
+             grid.fit(kde_data.values)
+             
+             #print(grid.best_params_)
+             # construct a kernel density estimate of the distribution
+             self.kde[t] = KernelDensity(bandwidth=grid.best_params_['bandwidth'], metric='euclidean',kernel='gaussian', algorithm='ball_tree')
+             self.kde[t].fit(kde_data.values)
      # to use it in many places ...
      def get_prediction_input(self,new_data):
          for name in list(new_data.columns):
@@ -610,8 +633,8 @@ class residual:
          return probs
      
      
-        
-     def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,conf_factor=0.01,samples=[300,50]):                    
+     # prepared to compute limits when the uncertainty is given in probabilistic form   
+     def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option,conf_factor=0.01,samples=[300,50]):                    
          label_num=-1
          for k in range(len(variable_set)):
              sample=variable_set[k]
@@ -624,7 +647,10 @@ class residual:
                  new_measure=[]
                  new_max=[]
                  new_cut = np.linspace(m_y[t][0],m_y[t][1],samples[0]).reshape(-1,1)
-                 Z=self.get_probs(telem,new_cut,t)
+                 if option=='Zonotope':
+                     Z=self.get_probs(telem,new_cut,t)
+                 else:
+                     Z=np.exp(self.kde[t].score_samples(new_cut))
                  mp=new_cut[np.where(Z == max(Z))[0][0]]
                  max_point=mp
                  #print(max_point)
@@ -641,9 +667,14 @@ class residual:
                      #assume width 1 to simplify the integral of the full fampling and scale for the other
                      width_full=(m_y[t][1]-m_y[t][0])/samples[0]
                      width_measure=(area[1]-area[0])/samples[1]
-                     Z_m=self.get_probs(telem,new_measure,t)
+                     if option=='Zonotope':
+                         Z_m=self.get_probs(telem,new_measure,t)
+                         Z_max=self.get_probs(telem,new_max,t)
+                     else:
+                         Z_m=np.exp(self.kde[t].score_samples(new_measure))
+                         Z_max=np.exp(self.kde[t].score_samples(new_max))
+                         
                      integral_measure=sum(Z_m)*width_measure/width_full
-                     Z_max=self.get_probs(telem,new_max,t)
                      A_max=sum(Z_max)*width_measure/width_full
                      acc=0
                      #97% confidence
@@ -665,7 +696,8 @@ class residual:
              except RuntimeWarning:
                  avoid.append(str(label_num+sample_n))
                  print('  - Runtime Warning in Score!')
-                 
+     
+     # this splits the evaluation in sets where option defines the type of boundary to be used
      def score(self,variables,telemetry,groups,dic_fill,plt_names,times,option='default',std=5):        
          m_y={}
          for t in self.regions:
@@ -685,7 +717,7 @@ class residual:
          for i in range(proc):
              sample_n=sample_start
              sample_stop=int((i+1)*(len(variables))/proc)
-             p = multiprocessing.Process(target=self.sample_score, args=(variables[sample_start:sample_stop].values,telemetr[sample_start:sample_stop],groups[sample_start:sample_stop],m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid))
+             p = multiprocessing.Process(target=self.sample_score, args=(variables[sample_start:sample_stop].values,telemetry[sample_start:sample_stop],groups[sample_start:sample_stop],m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option))
              p.start()
              jobs.append(p)
              sample_start=sample_stop
@@ -724,20 +756,19 @@ class residual:
          return forget
      
      #when calculating confidences now 1/10 of the std is used as sensor range of uncertainty
-     def evaluate_performance(self,data,option1='NN',option2='PCA'):
+     def evaluate_performance(self,data,option1='Zonotope',option2='PCA'): #option1 indicates which type of boundaries it will have ... default is the zonotope 
 
          #Clean, arrange and separate the data
          #try:
              #data = data.loc[data['UnitStatus'] == 9.0]
          #except:
              #print(' ')   
-
          data_2=copy.deepcopy(data)
          t_a=datetime.datetime.now()
          errors,groups=self.predict(data_2)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
-         normed_predict_data=self.get_prediction_input(new_data)
+         normed_predict_data=self.get_prediction_input(data_2)
          source_telemetry=normed_predict_data[self.source]
          print('    [*] MSO'+str(self.mso_index)+' prediction computing time ---> '+str(dif))
          # select the values for the scores
@@ -758,11 +789,10 @@ class residual:
                  normed_kde.iloc[locats]=self.norm(selection,self.kde_stats[t])"""
          kde_arr=[]
          i=-1
-
          # get scores
          t_a=datetime.datetime.now()
          dic_fill={}
-         forget=self.score(kde_data,source_telemetry,groups,dic_fill,plt_names,times)
+         forget=self.score(kde_data,source_telemetry,groups,dic_fill,plt_names,times,option=option1)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))
@@ -1156,13 +1186,13 @@ class fault_detector:
      # Function meant to help the paralelizing of the analysis from pm_manager
      def evaluate_mso(self,data,mso,recover_dic,name=[],option='PCA'):
          if name==[]:
-             recover_dic[self.get_dic_entry(mso)],q=self.models[mso].evaluate_performance(data)
+             recover_dic[self.get_dic_entry(mso)],q=self.models[mso].evaluate_performance(data,option1=option)
          else:
-             recover_dic[name],q=self.models[mso].evaluate_performance(data)
+             recover_dic[name],q=self.models[mso].evaluate_performance(data,option1=option)
          return q  
      # pass dates as in the format of the training data: [[Start_1,End_1],[Start_2,End_2]...]
      #Work is now paralelized
-     def evaluate_data(self,dates=[],manual_data=[],option='PCA'):
+     def evaluate_data(self,dates=[],manual_data=[],option='Zonotope'):
         if len(manual_data)<3:
             data, names = self.get_data_names(option='evaluation',times=dates)
         else:
@@ -1170,7 +1200,7 @@ class fault_detector:
         return_dic = {}
         forgets=[]
         for mso in self.mso_set: 
-            tt=self.evaluate_mso(data,mso,return_dic)
+            tt=self.evaluate_mso(data,mso,return_dic,option=option)
             for t in tt:
                 forgets.append(t)
         return return_dic,forgets

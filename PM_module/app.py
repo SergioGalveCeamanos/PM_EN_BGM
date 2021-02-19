@@ -100,34 +100,38 @@ def cycle():
     r=True
     task=get_task(file)
     print(task)
+    options=['Zonotope','KDE_1D']
+    extra_names=['','_KDE_1D']
     if task!='No task available':
         try:
             t_a=datetime.datetime.now()
             if task['type']=='analysis':
                 print('Task taken to analyze the unit '+str(task['device']))
-                to_write, do_prob=get_analysis(task['device'],task['time_start'],task['time_stop'],version=task['version'])
-                print('The analysis is completed for unit '+str(task['device']))
-                
-                if len(to_write)>1:
-                    upload_results(to_write,'analysis')
-                    # Now get forecasts
-                    new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=task['version'])
-                    print(new_conf)
-                    upload_results(new_conf,'configuration')
-                    upload_results(forecast_docs,'forecasts')
-                    if do_prob or do_prob_fore:
-                        #print(' --> Here you would do the probability thing')
-                        #probabilities=get_probability(task['device'],task['time_stop'])
-                        #upload_results(probabilities,'probabilities')
-                        probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=task['version'])
-                        upload_results(probabilities,'probabilities')
-                        report=generate_report(to_write,probabilities,forecast_docs,mso_set,size_mavg=20,version=task['version'])
-                        print(report)
-                        upload_results(report,'report')
-    
-                else:
-                    r=False
-                    print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
+                for i in range(len(options)):
+                    v=task['version']+extra_names[i]
+                    to_write, do_prob=get_analysis(task['device'],task['time_start'],task['time_stop'],version=task['version'],option=options[i],extra_name=extra_names[i])
+                    print('The analysis is completed for unit '+str(task['device']))
+                    
+                    if len(to_write)>1:
+                        upload_results(to_write,'analysis')
+                        # Now get forecasts
+                        new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=v)
+                        print(new_conf)
+                        upload_results(new_conf,'configuration')
+                        upload_results(forecast_docs,'forecasts')
+                        if do_prob or do_prob_fore:
+                            #print(' --> Here you would do the probability thing')
+                            #probabilities=get_probability(task['device'],task['time_stop'])
+                            #upload_results(probabilities,'probabilities')
+                            probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=v)
+                            upload_results(probabilities,'probabilities')
+                            report=generate_report(to_write,probabilities,forecast_docs,mso_set,size_mavg=20,version=v)
+                            print(report)
+                            upload_results(report,'report')
+        
+                    else:
+                        r=False
+                        print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
                 
             elif task['type']=='build_model':
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
