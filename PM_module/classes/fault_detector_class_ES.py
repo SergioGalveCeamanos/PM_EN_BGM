@@ -16,7 +16,7 @@ from matplotlib import cm as CM
 from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neighbors import KernelDensity
-from sklearn.linear_model import ElasticNetCV
+from sklearn.linear_model import ElasticNet
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.decomposition import PCA
 
@@ -442,7 +442,7 @@ class residual:
          while not_converged:
              try:
                  grid = GridSearchCV(BayesianGaussianMixture(),
-                            {'weight_concentration_prior': np.linspace(0.00001,1000, 30),'tol':[tole],'n_components':[5],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
+                            {'weight_concentration_prior': np.linspace(0.00001,1000, 30),'tol':[tole],'n_components':[7],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
                  print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
                  print(self.cont_cond)
                  print(normed_kde)
@@ -485,7 +485,13 @@ class residual:
              not_converged=True
              tole=0.0001
              while not_converged:
-                 lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1],cv=10,max_iter=5000,tol=tole)#,n_jobs=3
+                 grid = GridSearchCV(ElasticNet(),
+                            {'l1_ratio': [.1, .5, .7, .9, .95, .99, 1],'alpha':np.linspace(0,1,5)}) # 20-fold cross-validation ,n_jobs=3
+                 print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
+                 print(self.cont_cond)
+                 print(normed_kde)
+                 grid.fit(X_train, y_train)
+                 lin_reg_mod = ElasticNet(alpha=grid.best_params_['alpha'],l1_ratio=grid.best_params_['l1_ratio'],max_iter=5000,tol=tole)#,n_jobs=3
                  try:
                      lin_reg_mod.fit(X_train, y_train)
                      if t in test_groups:
@@ -502,9 +508,10 @@ class residual:
                          pred=[]
                          test_set_rmse = 0
                          test_set_r2 = 0
-                   
+                     print('  [I]  SPARSE COEFFICIENTS FOR EN')
+                     print(lin_reg_mod.sparse_coef_)
                      new_model['model']=lin_reg_mod
-                     new_model['cov']=X_train.cov()
+                     new_model['cov']=lin_reg_mod.sparse_coef_
                      new_model['r2_score']=test_set_r2
                      new_model['rmse_score']=test_set_rmse
                      new_model['y_test']=y_test
@@ -577,7 +584,13 @@ class residual:
                  trial.append(abs(err[i])/nor)
              self.lamdas[t]=max(trial)
              self.hos[t]=ho
-            
+             
+             # batch-stepped search for best H
+             
+             
+             
+             
+             # KDE to compare... baseline
              kde_data=pd.DataFrame({'error':err})
              #print(kde_data)
              #is it ok to get the std from such small subsample?
@@ -611,17 +624,23 @@ class residual:
          source_value=normed_predict_data[self.source]
          groups=self.bgm.predict(normed_predict_data[self.cont_cond].values)
          predictions=np.zeros(source_value.shape[0])
+         probs=[]
+         for i in range(source_value.shape[0]):
+             probs.append(0)
          for t in self.regions:
              locats=np.where(groups == t)[0]
              selection=source_value.iloc[locats]
              if selection.shape[0]!=0:
                  predictions[locats]=self.model[t]['model'].predict(selection)
-             
+                 select_probs=self.model[t]['model'].predict_proba(selection)
+                 print(select_probs)
+                 for l in range(len(locats)):
+                     probs[locats[l]]=select_probs[l]
          error = measured_value - predictions  
          print('Errors generated')
          print(error)
 
-         return error,groups
+         return error,groups,probs
      # just the adjustment of x given the gaussian params (usually center on 0), x must be an array of np
      def gaussian(self,x,sig,mu=0):
          return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
@@ -765,7 +784,7 @@ class residual:
              #print(' ')   
          data_2=copy.deepcopy(data)
          t_a=datetime.datetime.now()
-         errors,groups=self.predict(data_2)
+         errors,groups,probs_bgm=self.predict(data_2)
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          normed_predict_data=self.get_prediction_input(data_2)
@@ -796,6 +815,7 @@ class residual:
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))
+         dic_fill['group_prob']=probs_bgm
          return dic_fill,forget
 
      

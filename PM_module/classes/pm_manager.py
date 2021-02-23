@@ -71,6 +71,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
     activations=[]
     msos=[]
     confidences=[]
+    group_probabilities=[]
     residuals={}
     response={}
     db=pd.DataFrame(data)
@@ -99,15 +100,18 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
             dif=t_b-t_a
             print('  [T] TOTAL evaluation computing time ---> '+str(dif))
             filter_activations={}
+            print(' [I]  RESPONSE FROM EVALUATE_DATA ')
+            print(return_dic)
             for mso in fm.mso_set:
                 entry=fm.get_dic_entry(mso)
                 residuals[entry]=return_dic[entry]['error']
                 activations.append(return_dic[entry]['phi'])
                 filter_activations[entry]=return_dic[entry]['phi']
                 confidences.append(return_dic[entry]['alpha'])
+                group_probabilities.append(return_dic[entry]['group_prob'])
                 #Ew,f,al=fm.forecast_Brown(errors,100)
                 msos.append(entry)
-                response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
+                response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha'],'group_prob':return_dic[entry]['group_prob']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
             #prior_evolution=fm.prior_update(activations, confidences)
             result=[]
             n=-1
@@ -128,6 +132,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                         high_bounds=[]
                         activations=[]
                         confidence=[]
+                        group_prob=[]
                         #forecasts=[]
                         #f_error=[]
                         #alphas=[]
@@ -138,6 +143,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                                 d3=response[name]['high_bound']
                                 d4=response[name]['activations']
                                 d5=response[name]['confidence']
+                                d6=response[name]['group_prob']
                                 #d6=response[name]['residual_forecast']
                                 #d7=response[name]['forecast_validation_error']
                                 #d8=response[name]['forecast_alpha']
@@ -146,6 +152,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                                 high_bounds.append(float(d3[n]))
                                 activations.append(int(d4[n]))
                                 confidence.append(float(d5[n]))
+                                group_prob.append(float(d6[n]))
                                 #forecasts.append(d6[n])
                                 #f_error.append(d7[n])
                                 #alphas.append(d8)
@@ -154,6 +161,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                             new['high_bounds']=high_bounds
                             new['activations']=activations 
                             new['confidence']=confidence
+                            new['group_prob']=group_prob
                             if sum(activations)>0:
                                 do_prob=True
                             #new['residuals_forecast']=forecasts
@@ -734,7 +742,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         t_a=datetime.datetime.now()
         #SM=fault_manager.create_SM(samples=600)
         #print(SM)
-        fault_manager.load_entropy()
+        #fault_manager.load_entropy()
         #fault_manager.create_FSSM(SM)
         t_b=datetime.datetime.now()
         dif=t_b-t_a

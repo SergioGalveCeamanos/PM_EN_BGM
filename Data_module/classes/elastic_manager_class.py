@@ -163,7 +163,12 @@ class elastic_manager:
      
      # write a new document in an Analytics_ cluster --> will try to overwrite if already exists
      def create_new_doc(self,data):
-         ty='pm_data_'
+         if 'group_prob' in data[0]:
+             ty='pm_BGM_data_'
+             doc_class='diagnosis_bgm'
+         else:
+             ty='pm_data_'
+             doc_class='diagnosis'
          self.connect()
          response=True
          ind=self.get_index_analytics(data[0]['timestamp'],ty)
@@ -172,7 +177,7 @@ class elastic_manager:
              data[d]['_id']=self.get_ids(data[d]['timestamp'],ty,model)
          #b=json.dumps(data)
          try:
-             helpers.bulk(self.client, data, index=ind,doc_type='diagnosis')
+             helpers.bulk(self.client, data, index=ind,doc_type=doc_class)
          except:
              response=False
              print(' [!] Error uploading pm_data')

@@ -115,7 +115,7 @@ def cycle():
                     if len(to_write)>1:
                         upload_results(to_write,'analysis')
                         # Now get forecasts
-                        new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=v)
+                        """new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=v)
                         print(new_conf)
                         upload_results(new_conf,'configuration')
                         upload_results(forecast_docs,'forecasts')
@@ -127,7 +127,7 @@ def cycle():
                             upload_results(probabilities,'probabilities')
                             report=generate_report(to_write,probabilities,forecast_docs,mso_set,size_mavg=20,version=v)
                             print(report)
-                            upload_results(report,'report')
+                            upload_results(report,'report')"""
         
                     else:
                         r=False
