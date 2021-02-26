@@ -164,7 +164,7 @@ class elastic_manager:
      # write a new document in an Analytics_ cluster --> will try to overwrite if already exists
      def create_new_doc(self,data):
          if 'group_prob' in data[0]:
-             ty='pm_BGM_data_'
+             ty='pm_bgm_data_'
              doc_class='diagnosis_bgm'
          else:
              ty='pm_data_'

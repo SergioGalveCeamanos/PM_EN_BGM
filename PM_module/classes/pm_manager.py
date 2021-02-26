@@ -99,9 +99,11 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print('  [T] TOTAL evaluation computing time ---> '+str(dif))
+        
+
             filter_activations={}
-            print(' [I]  RESPONSE FROM EVALUATE_DATA ')
-            print(return_dic)
+            #print(' [I]  RESPONSE FROM EVALUATE_DATA ')
+            #print(return_dic)
             for mso in fm.mso_set:
                 entry=fm.get_dic_entry(mso)
                 residuals[entry]=return_dic[entry]['error']
@@ -152,7 +154,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                                 high_bounds.append(float(d3[n]))
                                 activations.append(int(d4[n]))
                                 confidence.append(float(d5[n]))
-                                group_prob.append(float(d6[n]))
+                                group_prob.append(d6[n].astype(float).tolist())
                                 #forecasts.append(d6[n])
                                 #f_error.append(d7[n])
                                 #alphas.append(d8)

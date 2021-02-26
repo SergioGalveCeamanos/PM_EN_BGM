@@ -16,7 +16,7 @@ from matplotlib import cm as CM
 from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neighbors import KernelDensity
-from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import ElasticNetCV
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.decomposition import PCA
 
@@ -442,7 +442,7 @@ class residual:
          while not_converged:
              try:
                  grid = GridSearchCV(BayesianGaussianMixture(),
-                            {'weight_concentration_prior': np.linspace(0.00001,1000, 30),'tol':[tole],'n_components':[7],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
+                            {'weight_concentration_prior': np.linspace(0.00001,1000, 20),'tol':[tole],'n_components':[4],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
                  print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
                  print(self.cont_cond)
                  print(normed_kde)
@@ -485,14 +485,11 @@ class residual:
              not_converged=True
              tole=0.0001
              while not_converged:
-                 grid = GridSearchCV(ElasticNet(),
-                            {'l1_ratio': [.1, .5, .7, .9, .95, .99, 1],'alpha':np.linspace(0,1,5)}) # 20-fold cross-validation ,n_jobs=3
-                 print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
-                 print(self.cont_cond)
-                 print(normed_kde)
-                 grid.fit(X_train, y_train)
-                 lin_reg_mod = ElasticNet(alpha=grid.best_params_['alpha'],l1_ratio=grid.best_params_['l1_ratio'],max_iter=5000,tol=tole)#,n_jobs=3
                  try:
+                     print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
+                     print(self.cont_cond)
+                     #print(normed_kde)
+                     lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1],cv=10,max_iter=5000,tol=tole)#,n_jobs=3
                      lin_reg_mod.fit(X_train, y_train)
                      if t in test_groups:
                          pred = lin_reg_mod.predict(X_test)
@@ -508,10 +505,13 @@ class residual:
                          pred=[]
                          test_set_rmse = 0
                          test_set_r2 = 0
-                     print('  [I]  SPARSE COEFFICIENTS FOR EN')
-                     print(lin_reg_mod.sparse_coef_)
+                     print('  [I]  Cov matrix Ho')
+                     
                      new_model['model']=lin_reg_mod
-                     new_model['cov']=lin_reg_mod.sparse_coef_
+                     #https://en.wikipedia.org/wiki/Ordinary_least_squares#Covariance_matrix
+                     Q=np.transpose(X_train.values).dot(X_train.values)
+                     new_model['cov']=np.linalg.inv(Q)
+                     print(new_model['cov'])
                      new_model['r2_score']=test_set_r2
                      new_model['rmse_score']=test_set_rmse
                      new_model['y_test']=y_test
@@ -520,6 +520,7 @@ class residual:
                      new_model['offset']=lin_reg_mod.intercept_
                      new_model_set[t]=new_model
                      not_converged=False
+                     
                  except ConvergenceWarning:
                      print('  - Convergence Warning training EN in MSO '+str(self.mso_reduced_index)+' in region #'+str(t)) 
                      print("Tolerance: "+str(tole))
@@ -571,7 +572,7 @@ class residual:
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
              
-             ho=self.model[t]['cov'].values
+             ho=self.model[t]['cov']
              err=data[t]['error']
              tel=data[t]['data']
              kde_data=pd.DataFrame({'error':err})
@@ -586,10 +587,7 @@ class residual:
              self.hos[t]=ho
              
              # batch-stepped search for best H
-             
-             
-             
-             
+
              # KDE to compare... baseline
              kde_data=pd.DataFrame({'error':err})
              #print(kde_data)
@@ -618,11 +616,12 @@ class residual:
          return normed_predict_data
      
      def predict(self,new_data,plot='No'):
-         # given a DF we clean it, norm it, classify it and make a prediction to each sample depending on its position                
+         # given a DF we clean it, norm it, classify it and make a prediction to each sample depending on its position             
          normed_predict_data=self.get_prediction_input(new_data)
          measured_value=normed_predict_data[self.objective]
          source_value=normed_predict_data[self.source]
-         groups=self.bgm.predict(normed_predict_data[self.cont_cond].values)
+         contour_cond=normed_predict_data[self.cont_cond]
+         groups=self.bgm.predict(contour_cond.values)
          predictions=np.zeros(source_value.shape[0])
          probs=[]
          for i in range(source_value.shape[0]):
@@ -630,15 +629,16 @@ class residual:
          for t in self.regions:
              locats=np.where(groups == t)[0]
              selection=source_value.iloc[locats]
+             cont_selec=contour_cond.iloc[locats]
              if selection.shape[0]!=0:
                  predictions[locats]=self.model[t]['model'].predict(selection)
-                 select_probs=self.model[t]['model'].predict_proba(selection)
-                 print(select_probs)
+                 select_probs=self.bgm.predict_proba(cont_selec)
+                 #print(select_probs)
                  for l in range(len(locats)):
                      probs[locats[l]]=select_probs[l]
          error = measured_value - predictions  
-         print('Errors generated')
-         print(error)
+         #print('Errors generated')
+         #print(error)
 
          return error,groups,probs
      # just the adjustment of x given the gaussian params (usually center on 0), x must be an array of np
