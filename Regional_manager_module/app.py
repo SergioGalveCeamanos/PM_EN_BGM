@@ -150,6 +150,37 @@ def new_model():
         #worked='False'
     return worked
 
+@app.route('/load-unit-data', methods=['POST'])
+def load_unit_data():
+    data = request.get_json()
+    data_file='/models/model_data_'
+    device=str(data['machine'])
+    version= data['version']
+    data_file=data_file+device
+    do_load=True
+    try:
+        with open(data_file, 'rb') as handle:
+            d = pickle.load(handle)
+        if version in d:
+            do_load=False
+    # Do something with the file
+    except:
+        print('File not created for model: '+device)
+        d = {'message':'Not loaded the requested version ... Added to the tasklist, check again later.'}
+    if do_load:
+        try:
+            table=pd.read_csv(file,index_col=0)
+            new_row={'device': int(data['machine']),'time_start': 'N/A','time_stop': 'N/A','date': str(datetime.datetime.now()),'status': 'ToDo','type':'load_data_summary','version':data['version']}
+            print('The new task received is: ')
+            print(new_row)
+            table=table.append(new_row,ignore_index=True)
+            table=table.astype({'device': 'int32'},errors='ignore')
+            table.to_csv(file)
+            worked='True'
+        except:
+            print("Error Loading the task to the CSV -> New Training not registered")
+            worked='False'
+    return d
 # launch service in IP 0.0.0.0
 if __name__ == '__main__':
     app.run(host='0.0.0.0',threaded=True) #debug=True,

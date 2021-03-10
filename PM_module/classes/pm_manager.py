@@ -8,6 +8,14 @@ To evaluate the given data and return the apropiate response
 https://docs.microsoft.com/es-es/azure/cognitive-services/translator/tutorial-build-flask-app-translation-synthesis
 """
 # the root for developed classes must be the same as in the saved files
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+
+
+import traceback
+from streamlit import caching
 import os, requests, uuid, json, pickle
 from os import path
 import numpy as np
@@ -51,8 +59,39 @@ def get_available_models():
             devices['available_models'].append(m[6:])
     return devices
 
-def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],extra_name=[]):
+def load_unit_data(device,version="",data_file='/models/model_data_'):
+    device=str(device)
+    file, folder = file_location(device,version)
+    fm=load_model(file, folder)
+    data_file=data_file+device
+    try:
+        with open(data_file, 'rb') as handle:
+            d = pickle.load(handle)
+            d[version]={}
+    # Do something with the file
+    except:
+        print('File not created for model: '+device)
+        d = {version:{}}
+    d[version]['residuals']=fm.mso_set
+    outs={}
+    variables={}
+    mean={}
+    std={}
+    for m in fm.mso_set:
+        outs[str(m)]=fm.models[m].objective
+        variables[str(m)]=fm.models[m].source
+        mean[str(m)]=fm.models[m].train_stats.loc[fm.models[m].objective,'mean']
+        std[str(m)]=fm.models[m].train_stats.loc[fm.models[m].objective,'std']
+    d[version]['outs']=outs
+    d[version]['variables']=variables
+    d[version]['mean']=mean
+    d[version]['std']=std
+    print(d[version])
+    with open(data_file, 'wb') as handle:
+        pickle.dump(d, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+
+def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],extra_name=[]):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])

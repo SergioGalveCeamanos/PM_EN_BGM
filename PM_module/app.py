@@ -6,17 +6,20 @@ Created on Mon Mar  9 08:49:21 2020
 
 https://blog.miguelgrinberg.com/post/the-flask-mega-tutorial-part-i-hello-world
 """
-
-from classes.pm_manager import get_analysis,set_new_model,get_available_models,get_forecast, get_probability,generate_report
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+from classes.pm_manager import get_analysis,set_new_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data
 import pandas as pd
 import requests
 import time
 import datetime 
 import pickle
-import warnings
+
 import traceback
 from streamlit import caching
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
+#warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
 #from config import Config
 #from flask import Flask, render_template, url_for, jsonify, request
@@ -158,6 +161,8 @@ def cycle():
                 #upload_results(probabilities,'probabilities')
                 probabilities= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=task['version'])
                 upload_results(probabilities,'probabilities')
+            elif task['type']=='load_data_summary':
+                load_unit_data(task['device'],version=task['version'])
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print(' [I] TOTAL TIME OF TASK |'+task['type']+'| is:  '+str(dif))
