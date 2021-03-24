@@ -138,8 +138,10 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print('  [T] TOTAL evaluation computing time ---> '+str(dif))
-        
 
+            with_probs=False
+            if 'group_prob' in return_dic[fm.get_dic_entry(fm.mso_set[0])]:
+                with_probs=True
             filter_activations={}
             #print(' [I]  RESPONSE FROM EVALUATE_DATA ')
             #print(return_dic)
@@ -149,10 +151,15 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                 activations.append(return_dic[entry]['phi'])
                 filter_activations[entry]=return_dic[entry]['phi']
                 confidences.append(return_dic[entry]['alpha'])
-                group_probabilities.append(return_dic[entry]['group_prob'])
+                if with_probs:
+                    group_probabilities.append(return_dic[entry]['group_prob'])
                 #Ew,f,al=fm.forecast_Brown(errors,100)
                 msos.append(entry)
-                response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha'],'group_prob':return_dic[entry]['group_prob']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
+                if with_probs:
+                    response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha'],'group_prob':return_dic[entry]['group_prob']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
+                else:
+                    response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
+
             #prior_evolution=fm.prior_update(activations, confidences)
             result=[]
             n=-1
@@ -184,30 +191,23 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                                 d3=response[name]['high_bound']
                                 d4=response[name]['activations']
                                 d5=response[name]['confidence']
-                                d6=response[name]['group_prob']
-                                #d6=response[name]['residual_forecast']
-                                #d7=response[name]['forecast_validation_error']
-                                #d8=response[name]['forecast_alpha']
                                 errors.append(float(d1[n]))
                                 low_bounds.append(float(d2[n]))
                                 high_bounds.append(float(d3[n]))
                                 activations.append(int(d4[n]))
                                 confidence.append(float(d5[n]))
-                                group_prob.append(d6[n].astype(float).tolist())
-                                #forecasts.append(d6[n])
-                                #f_error.append(d7[n])
-                                #alphas.append(d8)
+                                if with_probs:
+                                    d6=response[name]['group_prob']
+                                    group_prob.append(d6[n].astype(float).tolist())
                             new['models_error']=errors
                             new['low_bounds']=low_bounds
                             new['high_bounds']=high_bounds
                             new['activations']=activations 
                             new['confidence']=confidence
-                            new['group_prob']=group_prob
+                            if with_probs:
+                                new['group_prob']=group_prob
                             if sum(activations)>0:
                                 do_prob=True
-                            #new['residuals_forecast']=forecasts
-                            #new['forecasts_error']=f_error
-                            #new['alphas']=alphas
                             result.append(new)
                         except:
                             traceback.print_exc()
@@ -441,7 +441,7 @@ def get_probability(device,current_time,start_time=[],version=""):
     return docs,fm.mso_set
 
 # This function will generate the report at the end of the cycle in app.py(if nothing stoped the process)
-def generate_report(analysis,probabilities,forecast,mso_set,size_mavg=20,version=""):
+def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
     # prepare db for each mso
     db_dic={}
     first=True
@@ -708,11 +708,17 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         file_data='/models/file_data.csv'
         file_test='/models/file_test.csv'
         file_kde='/models/file_kde.csv'
-        fault_manager.training_data=pd.read_csv(file_data,index_col=0)
-        fault_manager.test_data=pd.read_csv(file_test,index_col=0)
-        fault_manager.kde_data=pd.read_csv(file_kde,index_col=0)
-        print(fault_manager.training_data)
-        if abs(sam-fault_manager.training_data.shape[0])>10:
+        no_files=False
+        try:
+            fault_manager.training_data=pd.read_csv(file_data,index_col=0)
+            fault_manager.test_data=pd.read_csv(file_test,index_col=0)
+            fault_manager.kde_data=pd.read_csv(file_kde,index_col=0)
+            if abs(sam-fault_manager.training_data.shape[0])>10:
+                no_files=True
+        except:
+            no_files=True
+        #print(fault_manager.training_data)
+        if no_files:
             try:
                 #manager = multiprocessing.Manager()
                 #shared_list = manager.list()

@@ -283,7 +283,8 @@ class elastic_manager:
          response=True
          ind=self.get_index_analytics(data[0]['timestamp'],ty)
          for d in range(len(data)):
-             data[d]['_id']=self.get_ids(data[d]['timestamp'],(ty+data[d]['mso_name']),str(data[d]['device']))
+             model=str(data[d]['device'])+data[d]['trained_version']
+             data[d]['_id']=self.get_ids(data[d]['timestamp'],(ty+data[d]['mso_name']),model)
          #b=json.dumps(data)
          try:
              helpers.bulk(self.client, data, index=ind,doc_type='forecast')
@@ -299,7 +300,8 @@ class elastic_manager:
          response=True
          ind=self.get_index_analytics(data[0]['timestamp'],ty)
          for d in range(len(data)):
-             data[d]['_id']=self.get_ids(data[d]['timestamp'],(ty+data[d]['fault']),str(data[d]['device']))
+             model=str(data[d]['device'])+data[d]['trained_version']
+             data[d]['_id']=self.get_ids(data[d]['timestamp'],(ty+data[d]['fault']),model)
          #b=json.dumps(data)
          try:
              helpers.bulk(self.client, data, index=ind,doc_type='bayesian')
@@ -314,7 +316,8 @@ class elastic_manager:
          ty='conf_'
          self.connect()
          ind=self.get_index_analytics(data['timestamp'],ty)
-         id_es=self.get_ids(data['timestamp'],ty,str(data['device']))
+         model=str(data['device'])+data['trained_version']
+         id_es=self.get_ids(data['timestamp'],ty,model)
          b=json.dumps(data)
          response=False
          try:
@@ -334,7 +337,10 @@ class elastic_manager:
          ty='rep_'
          self.connect()
          ind=self.get_index_analytics(data['timestamp'],ty)
-         id_es=self.get_ids(data['timestamp'],ty,str(data['device']))
+         model=str(data['device'])+data['trained_version']
+         id_es=self.get_ids(data['timestamp'],ty,model)
+         if data['critical_time']=="":
+             data['critical_time']="1969-07-20T20:17:40.000Z"
          b=json.dumps(data)
          response=False
          try:

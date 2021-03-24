@@ -140,6 +140,7 @@ def new_model():
         print("Error Loading the task to the CSV -> New Training not registered")
         worked='False'
     if worked=='False':
+        new_row={'device': machine,'time_start': 'N/A','time_stop': 'N/A','date': str(datetime.datetime.now()),'status': 'ToDo','type':'build_model','version':data['version']}
         new={'device': [],'time_start': [],'time_stop': [],'date': [],'status': [],'type':[]}
         db=pd.DataFrame(new)
         db=db.append(new_row,ignore_index=True)

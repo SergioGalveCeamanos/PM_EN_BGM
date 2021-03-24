@@ -33,6 +33,7 @@ from streamlit import caching
 
 
 def build_model(data):
+
     mso_path = data['mso_path']
     host = data['host']
     machine = data['machine']
@@ -117,6 +118,11 @@ def cycle():
                     
                     if len(to_write)>1:
                         upload_results(to_write,'analysis')
+                        probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=v)
+                        upload_results(probabilities,'probabilities')
+                        report=generate_report(to_write,probabilities,mso_set,size_mavg=20,version=v)
+                        print(report)
+                        upload_results(report,'report')
                         # Now get forecasts
                         """new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=v)
                         print(new_conf)
@@ -207,6 +213,6 @@ if __name__ == '__main__':
     # LOAD MODELS IN DICTIONARY
     #app.run(port=5002,threaded=True)
     while True:
-        time.sleep(60)
+        time.sleep(20)
         cycle()
 

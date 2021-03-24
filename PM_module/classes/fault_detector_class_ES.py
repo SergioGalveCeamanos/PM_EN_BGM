@@ -17,7 +17,9 @@ from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neighbors import KernelDensity
 from sklearn.linear_model import ElasticNetCV
-from sklearn.mixture import BayesianGaussianMixture
+from sklearn.cluster import MeanShift, estimate_bandwidth
+from sklearn import metrics
+from scipy import stats
 from sklearn.decomposition import PCA
 
 import copy
@@ -179,6 +181,14 @@ class PDF_multivariable:
                 
 
 #################################################################################################################
+def silhouette_score(estimator, X):
+   try:
+       clusters = estimator.predict(X)
+       score = metrics.silhouette_score(X, clusters, metric='euclidean')
+   except:
+       score=-1
+   return score
+#################################################################################################################
 # Create one object per each MSO in order to load the models and parameters necesary to perform the preditions 
 class residual:
      def __init__(self,mso_index,mso_reduced_index,sensed_vars,variables,faults,equations,sensor_names,cont_cond):
@@ -206,6 +216,7 @@ class residual:
          self.sensor_names=[]
          self.spec_list=[]  # list of all the model details to build it accordingly
          self.cont_cond=cont_cond
+         self.acceptance_proportion_samples=0.03
          for i in sensor_names:
              self.sensor_names.append(sensor_names[i])
          
@@ -250,6 +261,7 @@ class residual:
          test = test.drop(delete) 
          train = train.drop(delete) 
          return test,train
+
      
      def derivate(self,data):
          values=[]
@@ -441,16 +453,32 @@ class residual:
          tole=0.001
          while not_converged:
              try:
-                 grid = GridSearchCV(BayesianGaussianMixture(),
-                            {'weight_concentration_prior': np.linspace(0.00001,1000, 20),'tol':[tole],'n_components':[4],'max_iter':[800],'init_params':['random']}) # 20-fold cross-validation ,n_jobs=3
-                 print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
-                 print(self.cont_cond)
-                 print(normed_kde)
-                 grid.fit(normed_kde[self.cont_cond].values)
+                 new_df=normed_kde[self.cont_cond]
+                 no_outl=new_df[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
+                 # baseline MeanShift
+                 bnd = estimate_bandwidth(no_outl.values, quantile=0.2, n_samples=2500)
+                 grid = GridSearchCV(MeanShift(),
+                                    {'bandwidth': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6],'bin_seeding':[True]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
                 
-                 self.bgm = BayesianGaussianMixture(n_components=grid.best_params_['n_components'], random_state=42,max_iter=5000,weight_concentration_prior=grid.best_params_['weight_concentration_prior'],tol=tole,init_params='random',weight_concentration_prior_type='dirichlet_process').fit(normed_kde[self.cont_cond].values)
+                 grid.fit(no_outl.values,y=None)
+
+                 print('In MSO '+str(self.mso_index)+' the cont cond (data w\o outlayers 1st vs data with outlayers 2nd)---> ')
+                 print(self.cont_cond)
+                 print(no_outl)
+                 print(normed_kde[self.cont_cond])
+                 self.bgm =MeanShift(bandwidth=grid.best_params_['bandwidth'], bin_seeding=True,n_jobs=2,max_iter=5000).fit(no_outl.values)
                  groups=self.bgm.predict(normed_train_data[self.cont_cond].values)
                  #probs=self.bgm.predict_proba(normed_train_data[self.cont_cond].values)
+                 counts_groups_ratio=np.unique(groups, return_counts=True)[1]/normed_train_data[self.cont_cond].shape[0]
+                 print(' [I] Clustering ratio of samples - rejected those with less than '+str(self.acceptance_proportion_samples))
+                 self.regions=[]
+                 self.rejected_clusters=[]
+                 clusters=np.unique(groups)
+                 for n in range(len(counts_groups_ratio)):
+                     if counts_groups_ratio[n]>self.acceptance_proportion_samples:
+                         self.regions.append(clusters[n])
+                     else:
+                         self.rejected_clusters.append(clusters[n])
                  self.regions=np.unique(groups)
                  t_b=datetime.datetime.now()
                  dif=t_b-t_a
@@ -461,7 +489,7 @@ class residual:
                      tole=tole*5
          print('    [*] MSO'+str(self.mso_index)+' Clustering BGM ---> '+str(dif))
          ###################################################################
-         print(self.bgm.weights_)
+         #print(self.bgm.weights_)
          test_groups=self.bgm.predict(normed_test_data[self.cont_cond].values)
         
          train_data_groups={}
@@ -606,6 +634,7 @@ class residual:
              # construct a kernel density estimate of the distribution
              self.kde[t] = KernelDensity(bandwidth=grid.best_params_['bandwidth'], metric='euclidean',kernel='gaussian', algorithm='ball_tree')
              self.kde[t].fit(kde_data.values)
+             
      # to use it in many places ...
      def get_prediction_input(self,new_data):
          for name in list(new_data.columns):
@@ -615,6 +644,9 @@ class residual:
          normed_predict_data = self.norm(new_data,self.train_stats)
          return normed_predict_data
      
+     # can we get a measure of likeliness of belonging to a specific cluster from Mean Shift?  
+     #def probs_MeanShift(self,new_data):  
+        
      def predict(self,new_data,plot='No'):
          # given a DF we clean it, norm it, classify it and make a prediction to each sample depending on its position             
          normed_predict_data=self.get_prediction_input(new_data)
@@ -624,18 +656,26 @@ class residual:
          groups=self.bgm.predict(contour_cond.values)
          predictions=np.zeros(source_value.shape[0])
          probs=[]
-         for i in range(source_value.shape[0]):
-             probs.append(0)
+         #for i in range(source_value.shape[0]):
+             #probs.append(0)
          for t in self.regions:
              locats=np.where(groups == t)[0]
              selection=source_value.iloc[locats]
              cont_selec=contour_cond.iloc[locats]
              if selection.shape[0]!=0:
                  predictions[locats]=self.model[t]['model'].predict(selection)
-                 select_probs=self.bgm.predict_proba(cont_selec)
+                 # The probs feature is not ready for MEAN SHIFT
+                 #select_probs=self.bgm.predict_proba(cont_selec)
                  #print(select_probs)
-                 for l in range(len(locats)):
-                     probs[locats[l]]=select_probs[l]
+                 #for l in range(len(locats)):
+                     #probs[locats[l]]=select_probs[l]
+         for t in self.rejected_clusters:
+             locats=np.where(groups == t)[0]  
+             if len(locats)>3:
+                 cont_selec=contour_cond.iloc[locats]
+                 print(' [R] Samples from rejected Cluster: '+str(t))
+                 print('     Center of cluster: '+str(self.bgm.cluster_centers_[t]))
+                 print(cont_selec)
          error = measured_value - predictions  
          #print('Errors generated')
          #print(error)
@@ -815,7 +855,8 @@ class residual:
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))
-         dic_fill['group_prob']=probs_bgm
+         if probs_bgm!=[]:
+             dic_fill['group_prob']=probs_bgm
          return dic_fill,forget
 
      
