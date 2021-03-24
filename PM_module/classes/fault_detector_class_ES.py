@@ -458,7 +458,7 @@ class residual:
                  # baseline MeanShift
                  bnd = estimate_bandwidth(no_outl.values, quantile=0.2, n_samples=2500)
                  grid = GridSearchCV(MeanShift(),
-                                    {'bandwidth': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6],'bin_seeding':[True]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                                    {'bandwidth': [bnd*0.2,bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6,bnd*1.8,bnd*2],'bin_seeding':[True]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
                 
                  grid.fit(no_outl.values,y=None)
 
@@ -479,7 +479,7 @@ class residual:
                          self.regions.append(clusters[n])
                      else:
                          self.rejected_clusters.append(clusters[n])
-                 self.regions=np.unique(groups)
+                 print(np.unique(groups,return_counts=True))
                  t_b=datetime.datetime.now()
                  dif=t_b-t_a
                  not_converged=False
@@ -517,7 +517,7 @@ class residual:
                      print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
                      print(self.cont_cond)
                      #print(normed_kde)
-                     lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1],cv=10,max_iter=5000,tol=tole)#,n_jobs=3
+                     lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1],cv=30,max_iter=5000,tol=tole)#,n_jobs=3
                      lin_reg_mod.fit(X_train, y_train)
                      if t in test_groups:
                          pred = lin_reg_mod.predict(X_test)
@@ -562,9 +562,10 @@ class residual:
              locats=np.where(kde_groups == t)[0]
              data_grouped=normed_kde.iloc[locats]
              kde_tr=data_grouped[source]
+             kde_cc=data_grouped[self.cont_cond]
              kde_ts=data_grouped[objective]
              kde_fore=self.model[t]['model'].predict(kde_tr)
-             kde_feed[t]={'error':kde_ts.values-kde_fore,'data':kde_tr}
+             kde_feed[t]={'error':kde_ts.values-kde_fore,'data':kde_tr,'cont_cond':kde_cc}
          
          #print("Size of samples provided to KDE: "+str(len(uncertainty_vars)))
          print('  ')
@@ -603,7 +604,13 @@ class residual:
              ho=self.model[t]['cov']
              err=data[t]['error']
              tel=data[t]['data']
+             to_filt=data[t]['cont_cond']
+             to_filt['error']=err
              kde_data=pd.DataFrame({'error':err})
+             filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
+             kde_data=kde_data[filt_outl]
+             tel=tel[filt_outl]
+             
              train_stats = kde_data.describe()
              self.kde_stats[t] = train_stats.transpose()
              trial=[]

@@ -16,7 +16,6 @@ import requests
 import time
 import datetime 
 import pickle
-
 import traceback
 from streamlit import caching
 #warnings.filterwarnings("ignore", category=DeprecationWarning) 
@@ -104,8 +103,8 @@ def cycle():
     r=True
     task=get_task(file)
     print(task)
-    options=['Zonotope','KDE_1D']
-    extra_names=['','_KDE_1D']
+    options=['Zonotope']
+    extra_names=['']
     if task!='No task available':
         try:
             t_a=datetime.datetime.now()
