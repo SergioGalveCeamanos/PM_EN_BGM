@@ -17,7 +17,7 @@ from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neighbors import KernelDensity
 from sklearn.linear_model import ElasticNetCV
-from sklearn.cluster import MeanShift, estimate_bandwidth
+from sklearn.cluster import MiniBatchKMeans
 from sklearn import metrics
 from scipy import stats
 from sklearn.decomposition import PCA
@@ -455,18 +455,18 @@ class residual:
              try:
                  new_df=normed_kde[self.cont_cond]
                  no_outl=new_df[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
-                 # baseline MeanShift
-                 bnd = estimate_bandwidth(no_outl.values, quantile=0.2, n_samples=2500)
-                 grid = GridSearchCV(MeanShift(),
-                                    {'bandwidth': [bnd*0.2,bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6,bnd*1.8,bnd*2],'bin_seeding':[True]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
-                
-                 grid.fit(no_outl.values,y=None)
+                 # baseline Kmeans
 
-                 print('In MSO '+str(self.mso_index)+' the cont cond (data w\o outlayers 1st vs data with outlayers 2nd)---> ')
-                 print(self.cont_cond)
-                 print(no_outl)
-                 print(normed_kde[self.cont_cond])
-                 self.bgm =MeanShift(bandwidth=grid.best_params_['bandwidth'], bin_seeding=True,n_jobs=2,max_iter=5000).fit(no_outl.values)
+                 grid = GridSearchCV(MiniBatchKMeans(),
+                    {'n_clusters': [5,6,7,8,9],'batch_size':[100,300,500,750,1000],'max_iter':[1200]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+
+                 grid.fit(no_outl.values)
+
+                 #print('In MSO '+str(self.mso_index)+' the cont cond (data w\o outlayers 1st vs data with outlayers 2nd)---> ')
+                 #print(self.cont_cond)
+                 #print(no_outl)
+                 #print(normed_kde[self.cont_cond])
+                 self.bgm =MiniBatchKMeans(n_clusters=grid.best_params_['n_clusters'], batch_size=grid.best_params_['batch_size'],max_iter=5000).fit(no_outl.values)
                  groups=self.bgm.predict(normed_train_data[self.cont_cond].values)
                  #probs=self.bgm.predict_proba(normed_train_data[self.cont_cond].values)
                  counts_groups_ratio=np.unique(groups, return_counts=True)[1]/normed_train_data[self.cont_cond].shape[0]
@@ -517,7 +517,7 @@ class residual:
                      print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
                      print(self.cont_cond)
                      #print(normed_kde)
-                     lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .5, .7, .9, .95, .99, 1],cv=30,max_iter=5000,tol=tole)#,n_jobs=3
+                     lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .2, .4, .5, .6, .7, .8, .9, .93],cv=30,max_iter=5000,tol=tole)#,n_jobs=3
                      lin_reg_mod.fit(X_train, y_train)
                      if t in test_groups:
                          pred = lin_reg_mod.predict(X_test)
@@ -533,13 +533,13 @@ class residual:
                          pred=[]
                          test_set_rmse = 0
                          test_set_r2 = 0
-                     print('  [I]  Cov matrix Ho')
+                     #print('  [I]  Cov matrix Ho')
                      
                      new_model['model']=lin_reg_mod
                      #https://en.wikipedia.org/wiki/Ordinary_least_squares#Covariance_matrix
                      Q=np.transpose(X_train.values).dot(X_train.values)
                      new_model['cov']=np.linalg.inv(Q)
-                     print(new_model['cov'])
+                     #print(new_model['cov'])
                      new_model['r2_score']=test_set_r2
                      new_model['rmse_score']=test_set_rmse
                      new_model['y_test']=y_test
@@ -600,27 +600,45 @@ class residual:
          self.kde={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
-             
-             ho=self.model[t]['cov']
-             err=data[t]['error']
-             tel=data[t]['data']
-             to_filt=data[t]['cont_cond']
-             to_filt['error']=err
-             kde_data=pd.DataFrame({'error':err})
-             filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
-             kde_data=kde_data[filt_outl]
-             tel=tel[filt_outl]
-             
-             train_stats = kde_data.describe()
-             self.kde_stats[t] = train_stats.transpose()
-             trial=[]
-             for i in range(len(err)):
-                 val=tel.iloc[i].values
-                 nor=np.linalg.norm(val.dot(ho),ord=1)
-                 trial.append(abs(err[i])/nor)
-             self.lamdas[t]=max(trial)
-             self.hos[t]=ho
-             
+             print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+             try:
+                 ho=self.model[t]['cov']
+                 err=data[t]['error']
+                 print(type(err))
+                 print(len(err))
+                 tel=data[t]['data']
+                 to_filt=data[t]['cont_cond']
+                 to_filt['error']=err
+                 #print(to_filt)
+                 #kde_data=pd.DataFrame({'error':err})
+                 kde_data=to_filt['error']
+                 filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
+                 kde_data=kde_data[filt_outl]
+                 tel=tel[filt_outl]
+                 print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+                 print(kde_data)
+                 print('      [I] Values eliminated as outlayers in Zonotope Uncentrainty Bounding:')
+                 if to_filt.shape[0]>150:
+                     print(to_filt.head(150))
+                 else:
+                     print(to_filt.head(to_filt.shape[0]))
+                 train_stats = kde_data.describe()
+                 self.kde_stats[t] = train_stats.transpose()
+                 trial=[]
+                 print(' ---> [E] Where the error appears In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+    
+                 err=kde_data.values
+                 print(err)
+                 for i in range(kde_data.shape[0]):
+                     val=tel.iloc[i].values
+                     nor=np.linalg.norm(val.dot(ho),ord=1)
+                     trial.append(abs(err[i])/nor)
+                 self.lamdas[t]=max(trial)
+                 self.hos[t]=ho
+             except:
+                 print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+                 print(data[t])
+                 traceback.print_exc()
              # batch-stepped search for best H
 
              # KDE to compare... baseline

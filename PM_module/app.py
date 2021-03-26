@@ -32,7 +32,6 @@ from streamlit import caching
 
 
 def build_model(data):
-
     mso_path = data['mso_path']
     host = data['host']
     machine = data['machine']
@@ -117,7 +116,7 @@ def cycle():
                     
                     if len(to_write)>1:
                         upload_results(to_write,'analysis')
-                        probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=v)
+                        probabilities,mso_set= get_probability(task['device'],task['time_stop'],start_time=task['time_start'],version=task['version'])
                         upload_results(probabilities,'probabilities')
                         report=generate_report(to_write,probabilities,mso_set,size_mavg=20,version=v)
                         print(report)
