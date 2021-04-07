@@ -185,9 +185,13 @@ class elastic_manager:
          return response
      
      # retrieve the data for forecasts/probabilities 
-     def get_analytics(self,time_start, time_stop,version):
+     def get_analytics(self,time_start, time_stop,version,probs):
          self.connect()
-         ty='pm_data_'
+         if probs:
+             ty='pm_bgm_data_'
+             #doc_class='diagnosis_bgm'
+         else:
+             ty='pm_data_'
          ind=self.get_index_analytics(time_start,ty) 
          response = self.client.search(
             index=ind,

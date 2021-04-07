@@ -99,17 +99,26 @@ def cost_variables(sig,variables):
         else:
             ev=ev+np.count_nonzero(variables[s])
     return ev/len(search)
+
+def cost_linearizable(sig,variables,theta_lr):
+    search=np.where(sig==1)[0]
+    tot_pen=0
+    for s in search:
+        v_t=np.transpose(variables[s])
+        right_dot=np.dot(theta_lr,v_t)
+        tot_pen=tot_pen+np.dot(variables[s],right_dot) 
+    return tot_pen
 # cost function calculation. In this version the parameter is the Conf. Matrix, the fault activation (dic[n_faults)]) and the signature to evaluate. The constrain is added as a penalty
-def sig_cost(cm,fa,sig,detectable_faults,variables,show=False):
-    sig_t=np.transpose(sig)
-    right_dot=np.dot(cm,sig_t)
-    C=np.dot(sig,right_dot)           
+def sig_cost(cm,fa,sig,detectable_faults,variables,theta_lr,show=False):
+    #sig_t=np.transpose(sig)
+    #right_dot=np.dot(cm,sig_t)
+    #C=np.dot(sig,right_dot)           
     penalty=check_detection(sig,fa,detectable_faults,show=show)           
     P=penalty*100000
-    V=cost_variables(sig,variables)*50
-    total_cost=C+P+V
+    V=cost_linearizable(sig,variables,theta_lr)/3
+    total_cost=P+V
     if show:
-        print('   [D] Total costs: '+str(total_cost)+' | '+'Penalty: '+str(penalty)+' | '+'P: '+str(P)+'V: '+str(V))
+        print('   [D] Total costs: '+str(total_cost)+' | '+'Penalty: '+str(penalty)+' | '+' P: '+str(P)+' V: '+str(V))
     return total_cost
 
 # From two parents perform the single point crossover. The inputs are two df with one parent each.
@@ -152,21 +161,24 @@ def mutate(sig,mu):
         
         
 # Main function to launch the GA optimization process. As parameters the confussion matrix is requested and the search parameters
-def ga_search(cm,fault_activations,detectable_faults,variables,nP=1000,nI=500,pC=1,mu_o=0.05):
+def ga_search(cm,fault_activations,detectable_faults,variables,theta_lr,nP=1000,nI=600,pC=1,mu_o=0.05):
     #seeds=
+
     mu=mu_o
     mso_size=len(cm)
     cm=np.array(cm)
     parents=pd.DataFrame({'cost':[],'signature':[]})
     #initialize parents
     for i in range(nP):
-        sig_P=np.random.randint(2, size=mso_size)
+        # the random new values will be 2/3 0s
+        sig_P=np.random.randint(3, size=mso_size)
+        sig_P=np.where(sig_P==2, 0, sig_P)
         dices=np.random.random(len(sig_P))
         mu_list=np.where(dices<3*mu)[0]
         for m in mu_list:
             if sig_P[m]==1:
                 sig_P[m]=0
-        cost_P=sig_cost(cm,fault_activations,sig_P,detectable_faults,variables)
+        cost_P=sig_cost(cm,fault_activations,sig_P,detectable_faults,variables,theta_lr)
         parents=parents.append({'cost':cost_P,'signature':sig_P},ignore_index=True)
         
     parents=parents.sort_values('cost')
@@ -177,22 +189,9 @@ def ga_search(cm,fault_activations,detectable_faults,variables,nP=1000,nI=500,pC
     stop_1=True
     stop_2=True
     stop_3=True
+    t_a=datetime.datetime.now()
     for i in range(nI):
-        """crossover splited in multiple processes
-        manager = multiprocessing.Manager()
-        children_dic=manager.dict()
-        proc=int(multiprocessing.cpu_count())
-        dic_indx=np.arange(nC)
-        chunks=np.array_split(dic_indx,proc)
-        jobs=[]
-        for c in chunks:
-            p = multiprocessing.Process(target=ga_iteration, args=(parents,children_dic,c,cm,nP,mu))
-            p.start()
-            jobs.append(p)
-        for q in jobs:
-            q.join()
-        children=pd.DataFrame(children_dic)
-        children=children.transpose"""
+        #t_a=datetime.datetime.now()
         #t_a=datetime.datetime.now()
         children=pd.DataFrame({'cost':[],'signature':[]})
         for j in range(math.floor(nC/2)):
@@ -204,8 +203,8 @@ def ga_search(cm,fault_activations,detectable_faults,variables,nP=1000,nI=500,pC
             ch1_mut=mutate(ch1_sig,mu)
             ch2_mut=mutate(ch2_sig,mu)
             # evaluate children and load the table of children
-            ch1_cost=sig_cost(cm,fault_activations,ch1_mut,detectable_faults,variables)
-            ch2_cost=sig_cost(cm,fault_activations,ch2_mut,detectable_faults,variables)
+            ch1_cost=sig_cost(cm,fault_activations,ch1_mut,detectable_faults,variables,theta_lr)
+            ch2_cost=sig_cost(cm,fault_activations,ch2_mut,detectable_faults,variables,theta_lr)
             children=children.append({'cost':ch1_cost,'signature':ch1_mut},ignore_index=True)
             children=children.append({'cost':ch2_cost,'signature':ch2_mut},ignore_index=True)
         # mix with parents in new population, sort, check best and do all over again
@@ -220,10 +219,21 @@ def ga_search(cm,fault_activations,detectable_faults,variables,nP=1000,nI=500,pC
         best_ever=i_mix.iloc[0]
         # set parents as the best among the new mix
         parents=i_mix.iloc[0:nP]
-        if (i%100)==0:
+        #t_b=datetime.datetime.now()
+        #dif=t_b-t_a
+        #print(' [I] TOTAL TIME OF ITERATION #'+str(i)+' | is:  '+str(dif))
+        #print(best_ever)
+        #sum(best_ever['signature'])
+        if (i%10)==0:
+            
             print('Completed Iteration #'+str(i))
+            t_b=datetime.datetime.now()
+            dif=t_b-t_a
+            print('   [I] TOTAL TIME OF ITERATION #'+str(i)+' | is:  '+str(dif))
             print(list(np.where(best_ever['signature']==1)[0]))
-            sig_cost(cm,fault_activations,best_ever['signature'],detectable_faults,variables,show=True)
+            print('   [I] Number of MSOs used: '+str(sum(best_ever['signature'])))
+            sig_cost(cm,fault_activations,best_ever['signature'],detectable_faults,variables,theta_lr,show=True)
+            t_a=datetime.datetime.now()
         #sig_cost(cm,fault_activations,children.iloc[3]['signature'],detectable_faults,show=True)
         #t_b=datetime.datetime.now()
         #dif=t_b-t_a
@@ -233,7 +243,8 @@ def ga_search(cm,fault_activations,detectable_faults,variables,nP=1000,nI=500,pC
         
 ###################################################################################################################################
 # A new approach from scratch
-def find_set_v2(fault_manager):
+def find_set_v2(fault_manager,theta_lr):
+
     #prepare the set of msos activated per each fault:
     fault_activations={}
     positions={}
@@ -245,8 +256,7 @@ def find_set_v2(fault_manager):
                 new_f.append(mso)
         fault_activations[fault]=new_f
         positions[i]=fault
-        i=i+1
-            
+        i=i+1           
     # First create vectors for each MSO, with the non isolable variables grouped and the non-identifiable eliminated
     no_isolable=[]
     no_detectable=[]
@@ -271,10 +281,11 @@ def find_set_v2(fault_manager):
                             if new_fa:
                                 i=i+1
                                 new_fa=False
-                                no_isolable.append([n,k])
+                                no_isolable.append([positions[n],positions[k]])
+                                #detectable_faults.remove(positions[n])
                                 detectable_faults.remove(positions[k])
-                            if k not in no_isolable[i]:
-                                no_isolable[i].append(k)
+                            if positions[k] not in no_isolable[i]:
+                                no_isolable[i].append(positions[k])
                                 detectable_faults.remove(positions[k])
     #prepare reference dics that can link the old faults with the new ones while preparing the signature of the msos in a dic format
     dic_new_to_old={}
@@ -295,7 +306,7 @@ def find_set_v2(fault_manager):
         for k in g:
             dic_old_to_new[k]=pos
         pos=pos+1
-    
+
     # Create the list/dic of vectors that define the MSOs
     mso_vec={}
     for mso in range(len(fault_manager.models)):
@@ -306,7 +317,7 @@ def find_set_v2(fault_manager):
             else:
                 l.append(0)
         mso_vec[mso]=l
-        
+ 
     theta=[]
     for i in range(len(fault_manager.models)):
         theta.append([])
@@ -319,12 +330,12 @@ def find_set_v2(fault_manager):
     for val in fault_manager.sensors:
         i=i+1
         v_pos[val]=i
-        
+
     for mso in range(len(fault_manager.models)):
         for item in fault_manager.models[mso].known:   
             variables[mso,v_pos[item]]=1
                        
-    best_ever = ga_search(theta,fault_activations,detectable_faults,variables)
+    best_ever = ga_search(theta,fault_activations,detectable_faults,variables,theta_lr)
     return list(np.where(best_ever['signature']==1)[0])#theta,fault_activations,detectable_faults,theta,best_ever      
     
 

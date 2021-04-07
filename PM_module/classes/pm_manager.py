@@ -20,8 +20,9 @@ import os, requests, uuid, json, pickle
 from os import path
 import numpy as np
 import pandas as pd
-from .fault_detector_class_ES import fault_detector
+from classes.fault_detector_class_ES import fault_detector
 from .MSO_selector_GA import find_set_v2
+from .test_cross_var_exam import launch_analysis
 import datetime 
 import traceback
 import copy
@@ -33,7 +34,7 @@ import multiprocessing
         
 # Funtions to interact with the fault manager
 def load_model(filename,model_dir):
-    fault_manager = fault_detector(filename=[],mso_txt=[],host=[],machine=[],matrix=[],sensors=[],faults=[],sensors_lookup=[],sensor_eqs=[],preferent=[],filt_value=9,filt_parameter=[],filt_delay_cap=[],main_ca=[],max_ca_jump=[],cont_cond=[])
+    fault_manager = fault_detector(filename=[],mso_txt=[],host=[],machine=[],matrix=[],sensors=[],faults=[],sensors_lookup=[],sensor_eqs=[],filt_value=9,filt_parameter=[],filt_delay_cap=[],main_ca=[],max_ca_jump=[],cont_cond=[])
     fault_manager.Load(model_dir,filename)
     return fault_manager
 
@@ -46,8 +47,7 @@ def file_location(device,version="",root_path='/models/model_'):
 def fix_dict(d):
     new_d={}
     for n in d:
-        new_d[int(n)]=d[n]
-        
+        new_d[int(n)]=d[n]   
     return new_d
         
 def get_available_models():
@@ -382,7 +382,7 @@ def get_probability(device,current_time,start_time=[],version=""):
         start=start_time
     #file, folder = file_location(device)    
     #fm=load_model(file, folder)
-    names=['activations','confidence','timestamp']
+    names=['activations','confidence','timestamp','group_prob']
     body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time]}
     try:
         r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
@@ -397,10 +397,13 @@ def get_probability(device,current_time,start_time=[],version=""):
         activations.append(all_data[i][names[0]])
         confidences.append(all_data[i][names[1]])
     times=all_data[0][names[2]]
+    groups=all_data[0]['group_prob']
+    print(' [I] Example of groups extracted:')
+    print(groups)
     docs=[]
     # one option for the probability calculation, one long interpretation taking all prior probabilities as even    
     if start_time==[]:
-        prior_evo=fm.prior_update(activations, confidences, priori=[])
+        prior_evo=fm.prior_update(activations, confidences,groups, priori=[])
         n=-1
         for i in fm.faults:
             n=n+1
@@ -674,11 +677,12 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     # we return the    
     return final_samp
 
-def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,preferent,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=False,aggSeconds=5,sam=100000,version="",mso_set=[],production=False):
+def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False):
+    
     file, folder = file_location(machine,version) 
     do=False
     gen_search=False
-    if mso_set==[]:
+    if preferent==[]:
         gen_search=True
     if not os.path.exists(folder):
         print(folder)
@@ -688,19 +692,15 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         if retrain:
             do=True
     if do:
+
         print('[I] Started training process for version: '+version)
         sensors_in_tables=fix_dict(sensors_in_tables)
         faults=fix_dict(faults)
         sensors=fix_dict(sensors)
         #print(faults)
-        fault_manager = fault_detector(file,mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,preferent,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=aggSeconds)
+        fault_manager = fault_detector(file,mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=aggSeconds)
         fault_manager.read_msos()
         fault_manager.MSO_residuals()
-        #use GA for finding the MSO set
-        if gen_search:
-            mso_set=find_set_v2(fault_manager)
-        fault_manager.mso_set=mso_set
-        fault_manager.fault_signature_matrix()
         fault_manager.time_bands=time_bands
         names,times_b=fault_manager.get_data_names(option='CarolusRex',times=time_bands)
         body={'device':machine,'names':names,'times':times_b,'aggSeconds':aggSeconds}
@@ -770,13 +770,46 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             print('[I] Saved sampled and filtered data')
             print('[I] Filtered Training Data')
             print(fault_manager.training_data)
+            
+        #use GA for finding the MSO set
+        if gen_search:
+            file_pre_ga='/models/pre_GA_search_theta.pkl'
+            try:
+                filehandler = open(file_pre_ga, 'rb')
+                variables = pickle.load(filehandler)
+                filehandler.close()
+                if variables['version']==version:
+                    preprocesed=True
+                    theta=variables['theta']
+                    preferent=variables['preferent']
+                else:
+                    preprocesed=False
+            except:
+                preprocesed=False
+            if not preprocesed:
+                theta, preferent = launch_analysis(matrix, mso_path, sensors, sensor_eqs, sensors_in_tables, fault_manager.test_data, fault_manager.kde_data)
+                #from classes.MSO_selector_GA import find_set_v2,ga_search,angle,check_detection,check_isolability,compare_activation,cost_linearizable,cost_variables,dotproduct,length,mutate,sig_cost,single_point_cross
+                print('--- [I] Result of new analysis for mso and target selection: ')
+                print(theta)
+                print(preferent)
+                file_pre_ga='/models/pre_GA_search_theta.pkl'
+                file = open(file_pre_ga, 'wb')
+                pickle.dump({'theta':theta,'preferent':preferent,'version':version}, file)
+                file.close()
+            if mso_set==[]:
+                mso_set=find_set_v2(fault_manager,theta)
+            
+        fault_manager.preferent=preferent
+        fault_manager.mso_set=mso_set
+        fault_manager.fault_signature_matrix_construction()
+        
         t_a=datetime.datetime.now()
         print('[D] Right before training the residuals')
         response_dic=fault_manager.train_residuals(folder,file,cont_cond,predictor='NN',outlayers='No')
         print('[D] Right after training the residuals')
         t_b=datetime.datetime.now()
         dif=t_b-t_a
-        fault_manager.Load(folder,file)
+        #fault_manager.Load(folder,file)
         print('  [T] TOTAL residual training computing time ---> '+str(dif))
         #MAKE SURE THE MODEL DOESN'T ALREADY EXIST
         """fi = open(file, 'wb')
@@ -793,7 +826,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         #fault_manager.create_FSSM(SM)
         t_b=datetime.datetime.now()
         dif=t_b-t_a
-        print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
+        #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version
         fault_manager.Save(folder,file)

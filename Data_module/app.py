@@ -53,8 +53,11 @@ def collect_model_error():
     device = data['device']
     times = data['times']
     version = data['trained_version']
+    probs=False
+    if data['group_prob']==1:
+        probs=True
     em.device=device
-    d=em.get_analytics(times[0],times[1],version)
+    d=em.get_analytics(times[0],times[1],version,probs)
     return jsonify(d) #jsonify(response)
 
 @app.route('/collect-configuration', methods=['POST'])

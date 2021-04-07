@@ -32,6 +32,7 @@ from streamlit import caching
 
 
 def build_model(data):
+    print(' [D] Extracting data from file saved from Regional Manager')
     mso_path = data['mso_path']
     host = data['host']
     machine = data['machine']
@@ -40,7 +41,7 @@ def build_model(data):
     faults = data['faults']
     sensors = data['sensors']
     sensor_eqs = data['sensor_eqs']
-    preferent = data['preferent']
+    #preferent = data['preferent']
     time_bands = data['time_bands']
     aggS= data['aggSeconds']
     samples=data['sample_size']
@@ -52,13 +53,17 @@ def build_model(data):
     max_ca_jump=data['transition_trigger_low_bounds']
     cont_cond=data['contour_conditions']
     version=data['version']
-    spec_list=data['spec_list']
+    #spec_list=data['spec_list']
     if 'mso_set' in data:
         mso_set=data['mso_set']
     else:
         mso_set=[]
+    if 'preferent' in data:
+        preferent=data['preferent']
+    else:
+        preferent=[]
     print(data)
-    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,preferent,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set)
+    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set)
     
 # PRIORITY CRITERIA: Forecast and Probabilities ahead of Analysis (TO BE IMPLEMENTED)
 def get_task(file):
@@ -98,13 +103,14 @@ def upload_results(documents,task_type):
 def cycle():
     file='/models/tasks.csv'
     n_model='/models/new_model.pkl'
-    print('--> Start of cycle')
+    #print('--> Start of cycle')
     r=True
     task=get_task(file)
-    print(task)
+    #
     options=['Zonotope']
     extra_names=['']
     if task!='No task available':
+        print(task)
         try:
             t_a=datetime.datetime.now()
             if task['type']=='analysis':
@@ -141,6 +147,7 @@ def cycle():
                         print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
                 
             elif task['type']=='build_model':
+
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
                 filehandler = open(n_model, 'rb') 
                 data = pickle.load(filehandler)
@@ -172,6 +179,8 @@ def cycle():
             print(' [I] TOTAL TIME OF TASK |'+task['type']+'| is:  '+str(dif))
         except:
             r=False
+            print('   [E] Failed completion of asigned task: ')
+            print(task)
             traceback.print_exc()
         if r:
             text='Completed'

@@ -216,7 +216,7 @@ class residual:
          self.sensor_names=[]
          self.spec_list=[]  # list of all the model details to build it accordingly
          self.cont_cond=cont_cond
-         self.acceptance_proportion_samples=0.03
+         self.acceptance_proportion_samples=0.05
          for i in sensor_names:
              self.sensor_names.append(sensor_names[i])
          
@@ -680,7 +680,9 @@ class residual:
          contour_cond=normed_predict_data[self.cont_cond]
          groups=self.bgm.predict(contour_cond.values)
          predictions=np.zeros(source_value.shape[0])
-         probs=[]
+         probs=np.zeros([source_value.shape[0],len(self.regions)])
+         for i in range(len(groups)):
+             probs[i,groups[i]]=1
          #for i in range(source_value.shape[0]):
              #probs.append(0)
          for t in self.regions:
@@ -892,7 +894,7 @@ class residual:
 ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####   
 ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####       
 class fault_detector:
-     def __init__(self,filename,mso_txt,host,machine,matrix,sensors,faults,sensors_lookup,sensor_eqs,preferent,filt_value,filt_parameter,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=5):
+     def __init__(self,filename,mso_txt,host,machine,matrix,sensors,faults,sensors_lookup,sensor_eqs,filt_value,filt_parameter,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=5,preferent=[]):
          self.file_name=filename
          self.version=""
          self.msos_path=mso_txt                 # Path to the txt where the msos are defined indicating the variables numbers
@@ -910,7 +912,7 @@ class fault_detector:
          self.mso_set = []                      # the mso_set that is found to identify all possible faults
          self.sensor_eqs=sensor_eqs             # the equations that represent the known variables
          self.sensors_lookup=sensors_lookup     # the loopup table to use as intemediary between sensor_eqs and sensors
-         self.preferent=preferent               # the prefered goals to be predicted
+         self.preferent=preferent               # the list of scores, the lower the better suited to be a target
          self.priori = self.get_priors_even()   # the initial prior probabilities     
          
          self.FSSM={}                           # the matrix to evaluate how likely is a fault to be triggered by each residual
@@ -925,6 +927,7 @@ class fault_detector:
          self.data_creation=datetime.datetime.now()
          self.cont_cond=cont_cond
          self.device=machine
+         
          #self.ES_manager=elastic_manager(host,machine)                # Elastic search manager -->> DISABLED FOR THE DOCKER COMPOSE SERVICE
      def get_priors_even(self):
          priori = [] 
@@ -1166,8 +1169,53 @@ class fault_detector:
              else:
                  repeated=repeated+1
          #print(len(self.models))
-            
-     def fault_signature_matrix(self):
+
+     def get_weight_sensitivity(self,mso):
+
+         sentivity={}
+         sentivity_vars={}
+         templ=[]
+         v_pos={}
+         i=-1
+         for v in self.models[mso].source:
+             i=i+1
+             v_pos[v]=i
+         for t in self.models[mso].regions:
+             templ.append(0)
+         index=self.models[mso].mso_index
+         for eq in self.models[mso].equations:
+             if eq in self.faults:
+                 eq_vars=self.str_matrix[(eq-1)]
+                 sentivity_vars[self.faults[eq]]=[]
+                 for i in range(len(eq_vars)):
+                     if eq_vars[i]==1 and (i+1 in self.sensors):
+                         sentivity_vars[self.faults[eq]].append(self.sensors[i+1])
+         for f in sentivity_vars:
+             coe=[]
+             for t in self.models[mso].regions:
+                 tot=0
+                 for v in sentivity_vars[f]:
+                     if v!=self.models[mso].objective:
+                         tot=tot+self.models[mso].model[t]['coeff'][v_pos[v]]
+                     else:
+                         # The target variable is weighted as if it has a coeff of 1
+                         tot=tot+1
+                 # compensate with +1 to the total weight
+                 coe.append(tot/(sum(self.models[mso].model[t]['coeff'])+1))
+             sentivity[f]=coe
+             
+         # it is normalized along each region 
+         for t in self.models[mso].regions:
+             tot=0
+             for i in sentivity:
+                 tot=tot+sentivity[i][t]     
+             for i in sentivity:
+                 sentivity[i][t]=sentivity[i][t]/tot
+         
+         return sentivity         
+
+                 
+     def fault_signature_matrix_construction(self):
         self.fault_signature_matrix=[]
         n=-1
         for fault in self.faults:
@@ -1182,21 +1230,28 @@ class fault_detector:
                     self.fault_signature_matrix[n].append(1)
                 else:
                     self.fault_signature_matrix[n].append(0)
-                    
-                    
+       
+     # preferent is now a dic with scores, the lower the better
+     def get_target(self,names):
+         best_score=10000
+         best_target=''
+         for n in names:
+              if n in self.preferent:
+                  if self.preferent[n]<best_score:
+                      best_target=n
+                      best_score=self.preferent[n]
+         return best_target
+
+             
      def train_mso(self,mso,predictor,option2,folder,return_dic,cont_cond):
          print('[D] Inside paralel process to train mso'+str(mso))
          not_done=True
          variables=self.models[mso].known
          names=self.get_sensor_names(variables)
          i=-1
-         y=0
-         for name in names:
-             i=i+1
-             if name in self.preferent:
-                 y=i
-         goal=names[y]
-         names.remove(names[y])
+         target=self.get_target(names)
+         goal=target
+         names.remove(target)
          source=names
          while not_done:
              n=self.models[mso].mso_index
@@ -1217,6 +1272,7 @@ class fault_detector:
          manager = multiprocessing.Manager()
          return_dic = manager.dict()
          jobs = []
+         self.fault_mso_sensitivity={}
          print('[D] Inside train residual function')
          for mso in self.mso_set: 
              print('[D] About to start mso'+str(mso))
@@ -1226,7 +1282,9 @@ class fault_detector:
          for proc in jobs:
              proc.join()
          for mso in self.mso_set:
-             self.models[mso].load(folder,mso)
+             #self.models[mso].load(folder,mso)
+             # It will be a dictionary with access given by [mso - mso_set][fault - faults(text)][region (0-N)]
+             self.fault_mso_sensitivity[mso]=self.get_weight_sensitivity(mso)
          self.Save(folder,file)
          return return_dic
             
@@ -1292,7 +1350,7 @@ class fault_detector:
         return return_dic,forgets
             
             
-     def prior_update(self, activations, confidences, priori=[],alpha=[0.5],k_factor=0.25,option='GG'):#'SensitivityWeight'
+     def prior_update(self, activations, confidences, groups, priori=[],alpha=[0.5],k_factor=0.25,option='GG'):#'SensitivityWeight'
          if priori==[]:
              priori=self.priori
          prior_evolution=[]
@@ -1300,6 +1358,7 @@ class fault_detector:
              prior_evolution.append([priori[j]])
          test_weights=[]            
          for i in range(len(activations[0])):
+             gr=groups[i].index(max(groups[i]))
              p_phi=[]
              fault=False
              for l in range(len(self.mso_set)):
@@ -1639,6 +1698,7 @@ class fault_detector:
                  if var in self.models[mso].known:
                      name='MSO_'+str(mso)+'_var_'+str(var)
                      sensitivity[mso][var]=return_dic[name]
+                     
          return sensitivity   
 
 
