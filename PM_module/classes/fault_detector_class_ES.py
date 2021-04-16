@@ -212,6 +212,7 @@ class residual:
          self.pca=[]
          self.pca_stats=[]
          self.kde_stats=[]
+         self.regions=[]
          self.untrained=True
          self.sensor_names=[]
          self.spec_list=[]  # list of all the model details to build it accordingly
@@ -436,6 +437,7 @@ class residual:
          #train_stats.pop(objective)
          train_stats = train_stats.transpose()
          self.train_stats=train_stats
+
          train_labels = data[objective]
          test_labels = validation[objective]
          kde_labels = kde_data[objective]
@@ -471,7 +473,7 @@ class residual:
                  #probs=self.bgm.predict_proba(normed_train_data[self.cont_cond].values)
                  counts_groups_ratio=np.unique(groups, return_counts=True)[1]/normed_train_data[self.cont_cond].shape[0]
                  print(' [I] Clustering ratio of samples - rejected those with less than '+str(self.acceptance_proportion_samples))
-                 self.regions=[]
+                 
                  self.rejected_clusters=[]
                  clusters=np.unique(groups)
                  for n in range(len(counts_groups_ratio)):
@@ -514,8 +516,6 @@ class residual:
              tole=0.0001
              while not_converged:
                  try:
-                     print('In MSO '+str(self.mso_index)+' the cont cond ---> ')
-                     print(self.cont_cond)
                      #print(normed_kde)
                      lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .2, .4, .5, .6, .7, .8, .9, .93],cv=30,max_iter=5000,tol=tole)#,n_jobs=3
                      lin_reg_mod.fit(X_train, y_train)
@@ -538,7 +538,8 @@ class residual:
                      new_model['model']=lin_reg_mod
                      #https://en.wikipedia.org/wiki/Ordinary_least_squares#Covariance_matrix
                      Q=np.transpose(X_train.values).dot(X_train.values)
-                     new_model['cov']=np.linalg.inv(Q)
+                     cov=np.linalg.inv(Q)
+                     new_model['cov']=cov/sum(sum(cov)) # we normalize to avoid huge lamdas
                      #print(new_model['cov'])
                      new_model['r2_score']=test_set_r2
                      new_model['rmse_score']=test_set_rmse
@@ -573,8 +574,12 @@ class residual:
          print('  [*] STD OF OBJECTIVE OBTAINED:'+str(self.train_stats.loc[objective,'std']))
          print('  [*] STD OF ERROR OBTAINED:'+str(np.std(error)))
          if acceptance*np.std(error)>self.train_stats.loc[objective,'std']:
-             not_done=True
-             print('  [!] Model Rejected: Objective STD = '+str(self.train_stats.loc[objective,'std']))
+             if len(self.source)<3:
+                 print('  [V] Model Accepted with low performance (low number of inputs): Objective STD = '+str(self.train_stats.loc[objective,'std']))
+                 not_done=False
+             else:
+                not_done=True
+                print('  [!] Model Rejected: Objective STD = '+str(self.train_stats.loc[objective,'std']))
          else:
              not_done=False
              print('  [V] Model Accepted')
@@ -588,14 +593,135 @@ class residual:
          return_d['train_dataset_index']=data.index
          return_d['not_done']=not_done
          return return_d
-         
+     # UNCERTAINTY !!    
+     # Functions to search for the best possible Ho
+     def one_run(self,kde_data,tel,ho,epsi=0.0):
+        try:
+            trial=[]
+            inds=[]
+            nors=[]
+            projs=[]
+            vals=[]
+            #print(' ---> [E] Where the error appears In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+            err=kde_data.values
+            #print(err)
+            max_l=0
+            #count_undersensed=0
+            for i in range(kde_data.shape[0]):
+                val=tel.iloc[i].values
+                vals.append(val)
+                proj=val.dot(ho)
+                projs.append(proj)
+                nor=np.linalg.norm(proj,ord=1)
+                nors.append(nor)
+                last=(abs(err[i])-epsi)/nor
+                # to avoid the problem of epsilon
+                if last<0:
+                    #count_undersensed=count_undersensed+1
+                    last=0
+                if last>max_l:
+                    max_l=last
+                    #max_val=val
+                    #max_e=err[i]
+                trial.append(last)
+                inds.append(i)
+    
+            #lamdas[t]=max(trial)
+            #print('Cases where epsilon blinded: '+str(count_undersensed))
+            #print('Lamda: '+str(max_l))
+            #print('Variables that triggered maximum: ')
+            #print(max_val)
+            df_lamd=pd.DataFrame({'lamda':trial,'indexs':inds})
+            keep=df_lamd.loc[:,'lamda']>0
+            #ONLY FOR VALUES >0
+            lmd_mean=df_lamd[keep].describe()['lamda']['mean']
+            #print('Properties of the lamdas found in training: ')
+            #print(df_lamd.describe())
+            #new_d=df_lamd.sort_values(by=['lamda'],ascending=True)
+            return df_lamd,nors,projs,vals,lmd_mean
+        except:
+            print(' ---> [!] ERROR In Finding lamda for a given Ho')
+            #print(data[t])
+            traceback.print_exc()
+    
+     def update_ho(self,new_d,nors,projs,vals,lmd_mean,ho,epsi,interval,alpha=0.0001): 
+        ho_gradients={}
+        ho_var_penalty={}
+        for j in range(ho.shape[0]):
+            ho_var_penalty[j]=0
+            for k in range(ho.shape[1]):
+                name_ups=str(j)+str(k)
+                ho_gradients[name_ups]=[]
+        inds=new_d['indexs']
+        lamdas=new_d['lamda'].values
+        avg_h1=0
+        avg_h2=0
+        avg_h3=0
+        avg_h4=0
+        total_ls=0
+        for i in range(interval[0],interval[1]):
+            l=lamdas[i]
+            ind=inds[i]
+            if l>lmd_mean:
+                total_ls=total_ls+1
+                val_tot=sum(abs(vals[ind]))
+                for k in range(ho.shape[0]):
+                    for j in range(ho.shape[1]):
+                        # j are rows -- one linked to each variable 
+                        # k are for each of the projections
+                        name_ups=str(j)+str(k)
+                        h_1=0.5*(l/lmd_mean)**2
+                        h_2=2*vals[ind][j]/val_tot
+                        h_3=epsi/nors[ind]
+                        h_4=projs[ind][k]
+                        avg_h1=avg_h1+abs(h_1)
+                        avg_h2=avg_h2+abs(h_2)
+                        avg_h3=avg_h3+abs(h_3)
+                        avg_h4=avg_h4+abs(h_4)
+                        h=alpha*h_1*h_2*h_3*h_4
+                        #print('h='+str(h)+' | h1='+str(h_1)+' | h2='+str(h_2)+' | h3='+str(h_3)+' | h4='+str(h_4))
+                        #ho_var_penalty[j]=ho_var_penalty[j]+h
+                        ho_gradients[name_ups].append(h)
+                        if l/lmd_mean>1.75:
+                            #print('h='+str(h)+' | h1='+str(h_1)+' | h2='+str(h_2)+' | h3='+str(h_3)+' | h4='+str(h_4))
+                            bonfire='rest'
+        #print('Averages | h1='+str(avg_h1/total_ls)+' | h2='+str(avg_h2/total_ls)+' | h3='+str(avg_h3/total_ls)+' | h4='+str(avg_h4/total_ls))
+        # get average weight for each variable among projs, and average update
+        num_pens=0
+        average_penalt=0
+        for j in range(ho.shape[1]):
+            for k in range(ho.shape[0]):
+                name_ups=str(j)+str(k)
+                ho_var_penalty[j]=ho_var_penalty[j]+ho[j][k]
+                num_pens=num_pens+1
+                average_penalt=average_penalt+sum(ho_gradients[name_ups])
+        average_penalt=average_penalt/num_pens
+        update={}
+        for k in range(ho.shape[0]):
+            for j in range(ho.shape[1]):
+                # j are rows -- one linked to each variable 
+                # k are for each of the projections
+                name_ups=str(j)+str(k)
+                # penalty as a regularization along each variable (if the weight )
+                if abs(ho_var_penalty[j])>0:
+                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])*(1/(1+abs(ho[j][k])/abs(ho_var_penalty[j])))
+                else:
+                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])
+                    print(' [!] ONE VARIABLE IS NOT USED IN ANY PROJECTION -->'+str(self.source[j]))
+                    print(ho)
+                update[name_ups]=sum(ho_gradients[name_ups])
+                if update[name_ups]>1.5*average_penalt:
+                    bonfire='rest'
+                #print(' [R] L2 reg coef for '+name_ups+' --> '+str((1/(1+abs(sum(ho_gradients[name_ups]))/ho_var_penalty[j]))))
+        return ho,ho_gradients,update
      # alternatives to Uncertainty:
      #      https://towardsdatascience.com/a-hitchhikers-guide-to-mixture-density-networks-76b435826cca
      # KDE implementations comparison
      #      https://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
-     def model_uncertainty(self,data,option='default'):
+     def model_uncertainty(self,data,option='default'):        
          self.hos={}
          self.lamdas={}
+         self.epsilon={}
          self.kde_stats={}
          self.kde={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
@@ -604,8 +730,8 @@ class residual:
              try:
                  ho=self.model[t]['cov']
                  err=data[t]['error']
-                 print(type(err))
-                 print(len(err))
+                 #print(type(err))
+                 #print(len(err))
                  tel=data[t]['data']
                  to_filt=data[t]['cont_cond']
                  to_filt['error']=err
@@ -615,8 +741,8 @@ class residual:
                  filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
                  kde_data=kde_data[filt_outl]
                  tel=tel[filt_outl]
-                 print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-                 print(kde_data)
+                 #print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+                 #print(kde_data)
                  print('      [I] Values eliminated as outlayers in Zonotope Uncentrainty Bounding:')
                  if to_filt.shape[0]>150:
                      print(to_filt.head(150))
@@ -624,41 +750,90 @@ class residual:
                      print(to_filt.head(to_filt.shape[0]))
                  train_stats = kde_data.describe()
                  self.kde_stats[t] = train_stats.transpose()
-                 trial=[]
-                 print(' ---> [E] Where the error appears In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-    
                  err=kde_data.values
-                 print(err)
-                 for i in range(kde_data.shape[0]):
-                     val=tel.iloc[i].values
-                     nor=np.linalg.norm(val.dot(ho),ord=1)
-                     trial.append(abs(err[i])/nor)
-                 self.lamdas[t]=max(trial)
-                 self.hos[t]=ho
+                 # here starts the iteration preparation
+                 epsilon=kde_data.abs().describe()['mean']/10
+                 epsilon_step=kde_data.abs().describe()['std']/50
+                 new_d,nors,projs,vals,lmd_mean=self.one_run(kde_data,tel,ho,epsi=epsilon)
+                 ho_n=copy.deepcopy(ho)
+                 ho_record=[ho]
+                 ho_gradients=[]
+                 update_record=[]
+                 lamda_record=[new_d['lamda'].max()]
+                 pp=0
+                 stop_count=0
+                 stop_overfit=0
+                 batch=100
+                 last_ratio=lmd_mean/new_d.describe()['lamda']['max']
+                 converged=False
+                 iterator=0
+                 counter=-1
+                 mov_avg=10
+                 ratio_evolution=[last_ratio]
+                 best_ratio=last_ratio
+                 best_lamda=new_d['lamda'].max()
+                 while not converged:#new_d['lamda'].max()>2*lmd_mean:
+                     # work in smaller batches
+                     iterator=iterator+1
+                     print('ITERATION # '+str(iterator))
+                     b=0
+                     in_epoch=True
+                     # make batch selection at random
+                     while b<new_d.shape[0] and in_epoch:
+                         counter=counter+1
+                         b=b+batch
+                         if b>(new_d.shape[0]-1):
+                             b=new_d.shape[0]-1
+                             in_epoch=False
+                         ho_n,ho_gradients_n,update=self.update_ho(new_d,nors,projs,vals,lmd_mean,ho_n,epsilon,[b-100,b],alpha=0.0003)
+                         ho_gradients.append(ho_gradients_n)
+                         update_record.append(update)
+                         #print(' ---> Run #'+str(pp))
+                         #print(ho_n)
+                         #print(update)
+                         #print('------------------------------------------')
+                         ho_n=ho_n/sum(sum(abs(ho_n))) # normalized each iteration ?
+                         ho_record.append(ho_n)
+                         # this is quite ineficient?
+                         new_d,nors,projs,vals,lmd_mean=self.one_run(kde_data,tel,ho_n,epsi=epsilon)
+                         lamda_record.append(new_d['lamda'].max())
+                         #print(new_d.describe())
+                         if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00015:
+                             stop_count=stop_count+1
+                             #print(' ------ Stability CONVERGENCE CLOSER ------')
+                             if stop_count>10:
+                                 converged=True
+                         else:
+                             stop_count=0
+                             
+                         last_ratio=lmd_mean/new_d.describe()['lamda']['max']
+                         ratio_evolution.append(last_ratio)            
+                         if counter>mov_avg:
+                             ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
+                             li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
+                             if ri*best_lamda/(best_ratio*li)>1.5:
+                                 stop_overfit=stop_overfit+1
+                                 #print(' ------ Overfitting CONVERGENCE CLOSER ------')
+                                 #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                             if stop_overfit>5:
+                                 converged=True
+                         else:
+                             stop_overfit=0
+                         
+                         if last_ratio>best_ratio:
+                             best_ratio=last_ratio
+                             best_lamda=new_d['lamda'].max()
+                     print(new_d.describe())
+                     print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
+                     print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                 self.hos[t]=ho_n
+                 self.lamdas[t]=new_d['lamda'].max()
+                 self.epsilon[t]=epsilon
              except:
                  print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
                  print(data[t])
                  traceback.print_exc()
-             # batch-stepped search for best H
 
-             # KDE to compare... baseline
-             kde_data=pd.DataFrame({'error':err})
-             #print(kde_data)
-             #is it ok to get the std from such small subsample?
-             train_stats = kde_data.describe()
-             self.kde_stats[t] = train_stats.transpose()
-             #normed_data = self.norm(kde_data,self.kde_stats[t])
-             #normed_data=normed_data.dropna()
-             #kde_data.plot.kde()
-             grid = GridSearchCV(KernelDensity(),
-                        {'bandwidth': np.linspace(0.01, 10, 20)},
-                        cv=3) # 20-fold cross-validation
-             grid.fit(kde_data.values)
-             
-             #print(grid.best_params_)
-             # construct a kernel density estimate of the distribution
-             self.kde[t] = KernelDensity(bandwidth=grid.best_params_['bandwidth'], metric='euclidean',kernel='gaussian', algorithm='ball_tree')
-             self.kde[t].fit(kde_data.values)
              
      # to use it in many places ...
      def get_prediction_input(self,new_data):
@@ -713,16 +888,21 @@ class residual:
          return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
      
      # given the set of samples we evaluate how liekly are those errors to happen -- For the zonotope approach
-     def get_probs(self,telem,error_set,group):
-         lim=self.lamdas[group]*np.linalg.norm(telem.dot(self.hos[group]),ord=1)
+     def get_probs(self,telem,error_set,group,m_y):
+         lim=self.lamdas[group]*np.linalg.norm(telem.dot(self.hos[group]),ord=1)+self.epsilon[group]
+         # using lim/2 we ensure that at least the cut explored covers the 66% of the gaussian distribution (lower limit to the sensibility of the confidence!!)
+         if lim/2>max(m_y[group]):
+             lim=2*max(m_y[group])
          probs=self.gaussian(error_set,lim/2)
          return probs
      
      
      # prepared to compute limits when the uncertainty is given in probabilistic form   
-     def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option,conf_factor=0.01,samples=[300,50]):                    
+     def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option,conf_factor=0.025,samples=[300,50]):                      
+
          label_num=-1
          for k in range(len(variable_set)):
+             print('-----> SAMPLE #'+str(k))
              sample=variable_set[k]
              t=group_set[k]
              telem=telem_set.iloc[k].values
@@ -734,34 +914,42 @@ class residual:
                  new_max=[]
                  new_cut = np.linspace(m_y[t][0],m_y[t][1],samples[0]).reshape(-1,1)
                  if option=='Zonotope':
-                     Z=self.get_probs(telem,new_cut,t)
+                     Z=self.get_probs(telem,new_cut,t,m_y)
                  else:
                      Z=np.exp(self.kde[t].score_samples(new_cut))
                  mp=new_cut[np.where(Z == max(Z))[0][0]]
                  max_point=mp
                  #print(max_point)
                  integral=sum(Z)
+                 conf_width=sensor_acc*(self.lamdas[t]*np.linalg.norm(telem.dot(self.hos[t]),ord=1)+self.epsilon[t])
+                 print('   Conf_width: '+str(conf_width))
                  if integral>0:
                      P=Z/integral
                      #second get the sensor accuracy area
-                     area=[(sample[0]-sensor_acc*self.kde_stats[t].loc["error","std"]),(sample[0]+sensor_acc*self.kde_stats[t].loc["error","std"])]
+                     area=[(sample[0]-conf_width),(sample[0]+conf_width)] #sensor_acc*self.kde_stats[t].loc["error","std"])
                      new_measure= np.linspace(area[0],area[1],samples[1]).reshape(-1,1)
-                         
+                     #print('   Sample bounds: '+str(area))  
+                     #print('   samples to use: '+str(new_measure))
                      #using the point that got bigger probability to get the reference A_max for the confidence computation
-                     area_max=[(max_point-sensor_acc*self.kde_stats[t].loc["error","std"]),(max_point+sensor_acc*self.kde_stats[t].loc["error","std"])]
+                     area_max=[(max_point-conf_width),(max_point+conf_width)]
                      new_max= np.linspace(area_max[0],area_max[1],samples[1]).reshape(-1,1)
+                     #print('   Max bounds: '+str(area_max))   
                      #assume width 1 to simplify the integral of the full fampling and scale for the other
-                     width_full=(m_y[t][1]-m_y[t][0])/samples[0]
-                     width_measure=(area[1]-area[0])/samples[1]
+                     #width_full=(m_y[t][1]-m_y[t][0])#/samples[0]
+                     #width_measure=(area[1]-area[0])#/samples[1]
                      if option=='Zonotope':
-                         Z_m=self.get_probs(telem,new_measure,t)
-                         Z_max=self.get_probs(telem,new_max,t)
+                         Z_m=self.get_probs(telem,new_measure,t,m_y)
+                         #print('   lims inside gaussian probs: '+str(self.lamdas[t]*np.linalg.norm(telem.dot(self.hos[t]),ord=1)))
+                         #print('   Telemetry used: '+str(telem))
+                         #print('   Projections Zonotopes: '+str(telem.dot(self.hos[t])))
+                         Z_max=self.get_probs(telem,new_max,t,m_y)
                      else:
                          Z_m=np.exp(self.kde[t].score_samples(new_measure))
                          Z_max=np.exp(self.kde[t].score_samples(new_max))
-                         
-                     integral_measure=sum(Z_m)*width_measure/width_full
-                     A_max=sum(Z_max)*width_measure/width_full
+                     integral_measure=sum(Z_m)#*width_measure/width_full
+                     A_max=sum(Z_max)#*width_measure/width_full
+                     #print('   Subset Integral probs: '+str(Z_m))
+                     print('   Subset Integral sample: '+str(integral_measure)+' | Subset Integral MAx: '+str(A_max))
                      acc=0
                      #97% confidence
                      for j in range((len(P)-1)):
@@ -772,22 +960,26 @@ class residual:
                          if acc<(1-conf_factor) and (acc+P[j+1])>(1-conf_factor):
                              nhigh=new_cut[j][0]
                              high[str(label_num+sample_n)]=nhigh
+                     print('   [err,high,low]: '+str([sample[0],nhigh,nlow]))
                      errors[str(label_num+sample_n)]=sample[0]
                      if ((sample[0]>nlow) and (sample[0]<nhigh)):
                          alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
                          phi[str(label_num+sample_n)]=0
+                         print('   No activ, Confidence: '+str((1-integral_measure/A_max)))
                      else:
                          alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
                          phi[str(label_num+sample_n)]=(1)
+                         print('   Activ, Confidence: '+str((1-integral_measure/A_max)))
              except RuntimeWarning:
                  avoid.append(str(label_num+sample_n))
                  print('  - Runtime Warning in Score!')
      
      # this splits the evaluation in sets where option defines the type of boundary to be used
-     def score(self,variables,telemetry,groups,dic_fill,plt_names,times,option='default',std=5):        
+     def score(self,variables,telemetry,groups,dic_fill,plt_names,times,option='default',std=7):                   
+ 
          m_y={}
          for t in self.regions:
-             m_y[t]=[(self.kde_stats[t].loc["error","mean"]-std*self.kde_stats[t].loc["error","std"]),(self.kde_stats[t].loc["error","mean"]+std*self.kde_stats[t].loc["error","std"])]
+             m_y[t]=[(self.kde_stats[t].loc["mean"]-std*self.kde_stats[t].loc["std"]),(self.kde_stats[t].loc["mean"]+std*self.kde_stats[t].loc["std"])]
          manager = multiprocessing.Manager()
          low=manager.dict()
          high=manager.dict()
@@ -795,7 +987,7 @@ class residual:
          alpha=manager.dict()
          phi=manager.dict()
          avoid=manager.list()
-         sensor_acc=0.10
+         sensor_acc=0.025
          sample_n=-1
          jobs = []
          proc=int(multiprocessing.cpu_count())
@@ -809,7 +1001,7 @@ class residual:
              sample_start=sample_stop
          for q in jobs:
              q.join()
-  
+
          dic_fill['error']=[]
          dic_fill['high']=[]
          dic_fill['low']=[]
@@ -858,10 +1050,8 @@ class residual:
          source_telemetry=normed_predict_data[self.source]
          print('    [*] MSO'+str(self.mso_index)+' prediction computing time ---> '+str(dif))
          # select the values for the scores
-
          #arrange the values for the kde evaluation
          #kde_data,plt_names=self.kde_gathering(errors,data_2,option2)
-
          kde_data=pd.DataFrame({'error':errors})
          plt_names=[]
          times=data_2['timestamp']
@@ -882,7 +1072,7 @@ class residual:
          t_b=datetime.datetime.now()
          dif=t_b-t_a
          print('    [*] MSO'+str(self.mso_index)+' scoring computing time ---> '+str(dif))
-         if probs_bgm!=[]:
+         if len(probs_bgm)>1:
              dic_fill['group_prob']=probs_bgm
          return dic_fill,forget
 
@@ -927,7 +1117,7 @@ class fault_detector:
          self.data_creation=datetime.datetime.now()
          self.cont_cond=cont_cond
          self.device=machine
-         
+         self.fault_mso_sensitivity={}          # meant to keep the sensitivity of each mso to each fault according to the weights of the model in each region
          #self.ES_manager=elastic_manager(host,machine)                # Elastic search manager -->> DISABLED FOR THE DOCKER COMPOSE SERVICE
      def get_priors_even(self):
          priori = [] 
@@ -1170,49 +1360,51 @@ class fault_detector:
                  repeated=repeated+1
          #print(len(self.models))
 
-     def get_weight_sensitivity(self,mso):
-
-         sentivity={}
-         sentivity_vars={}
-         templ=[]
-         v_pos={}
-         i=-1
-         for v in self.models[mso].source:
-             i=i+1
-             v_pos[v]=i
-         for t in self.models[mso].regions:
-             templ.append(0)
-         index=self.models[mso].mso_index
-         for eq in self.models[mso].equations:
-             if eq in self.faults:
-                 eq_vars=self.str_matrix[(eq-1)]
-                 sentivity_vars[self.faults[eq]]=[]
-                 for i in range(len(eq_vars)):
-                     if eq_vars[i]==1 and (i+1 in self.sensors):
-                         sentivity_vars[self.faults[eq]].append(self.sensors[i+1])
-         for f in sentivity_vars:
-             coe=[]
+     def get_weight_sensitivity(self):
+         for mso in self.mso_set:
+             sentivity={}
+             sentivity_vars={}
+             templ=[]
+             v_pos={}
+             i=-1
+             for v in self.models[mso].source:
+                 i=i+1
+                 v_pos[v]=i
+             for t in self.models[mso].regions:
+                 templ.append(0)
+             index=self.models[mso].mso_index
+             for eq in self.models[mso].equations:
+                 #print('Equation '+str(eq))
+                 if eq in self.faults:
+                     eq_vars=self.str_matrix[(eq-1)]
+                     #print(eq_vars)
+                     sentivity_vars[self.faults[eq]]=[]
+                     for i in range(len(eq_vars)):
+                         if eq_vars[i]==1 and (i+1 in self.sensors):
+                             if self.sensor_eqs[self.sensors_lookup[i+1]] in self.models[mso].equations:
+                                 sentivity_vars[self.faults[eq]].append(self.sensors[i+1])
+             for f in sentivity_vars:
+                 coe=[]
+                 for t in self.models[mso].regions:
+                     tot=0
+                     for v in sentivity_vars[f]:
+                         if v!=self.models[mso].objective:
+                             tot=tot+abs(self.models[mso].model[t]['coeff'][v_pos[v]])
+                         else:
+                             # The target variable is weighted as if it has a coeff of 1
+                             tot=tot+1
+                     # compensate with +1 to the total weight
+                     coe.append(tot/(sum(abs(self.models[mso].model[t]['coeff']))+1))
+                 sentivity[f]=coe
+             # it is normalized along each region 
              for t in self.models[mso].regions:
                  tot=0
-                 for v in sentivity_vars[f]:
-                     if v!=self.models[mso].objective:
-                         tot=tot+self.models[mso].model[t]['coeff'][v_pos[v]]
-                     else:
-                         # The target variable is weighted as if it has a coeff of 1
-                         tot=tot+1
-                 # compensate with +1 to the total weight
-                 coe.append(tot/(sum(self.models[mso].model[t]['coeff'])+1))
-             sentivity[f]=coe
-             
-         # it is normalized along each region 
-         for t in self.models[mso].regions:
-             tot=0
-             for i in sentivity:
-                 tot=tot+sentivity[i][t]     
-             for i in sentivity:
-                 sentivity[i][t]=sentivity[i][t]/tot
-         
-         return sentivity         
+                 for i in sentivity:
+                     tot=tot+sentivity[i][t]     
+                 for i in sentivity:
+                     sentivity[i][t]=sentivity[i][t]/tot
+             self.fault_mso_sensitivity[mso]=sentivity
+       
 
                  
      def fault_signature_matrix_construction(self):
@@ -1264,15 +1456,15 @@ class fault_detector:
              print('[D] Inside train mso function for mso #'+str(mso))
              return_dic[self.get_dic_entry(mso)]=to_train.train(self.training_data,self.test_data,self.kde_data,source,goal,cont_cond)
              to_train.save(folder,mso)
-             #self.models[mso].load(folder,mso)
+             self.models[mso].load(folder,mso)
              self.models[mso]=to_train
              not_done=return_dic[self.get_dic_entry(mso)]['not_done']
              
      def train_residuals(self,folder,file,cont_cond,predictor='NN',outlayers='No',option2='PCA'):
+
          manager = multiprocessing.Manager()
          return_dic = manager.dict()
          jobs = []
-         self.fault_mso_sensitivity={}
          print('[D] Inside train residual function')
          for mso in self.mso_set: 
              print('[D] About to start mso'+str(mso))
@@ -1282,9 +1474,7 @@ class fault_detector:
          for proc in jobs:
              proc.join()
          for mso in self.mso_set:
-             #self.models[mso].load(folder,mso)
-             # It will be a dictionary with access given by [mso - mso_set][fault - faults(text)][region (0-N)]
-             self.fault_mso_sensitivity[mso]=self.get_weight_sensitivity(mso)
+             self.models[mso].load(folder,mso)
          self.Save(folder,file)
          return return_dic
             
@@ -1309,7 +1499,7 @@ class fault_detector:
              data = data.astype(float)
              for mso in self.mso_set:
                  error=self.models[mso].predict(data,plot='No')
-                 diff=abs((self.models[mso].kde_stats.loc['Errors','mean']-error.mean())/self.models[mso].kde_stats.loc['Errors','std'])
+                 diff=abs((self.models[mso].kde_stats.loc['mean']-error.mean())/self.models[mso].kde_stats.loc['std'])
                  print(('    MSO #'+str(mso)+ '--> Diff: '+str(diff)))
                  if diff>1:
                      result.append(True)
@@ -1350,20 +1540,36 @@ class fault_detector:
         return return_dic,forgets
             
             
-     def prior_update(self, activations, confidences, groups, priori=[],alpha=[0.5],k_factor=0.25,option='GG'):#'SensitivityWeight'
+     def prior_update(self, activations, confidences, groups, priori=[],alpha=[0.5],up_lim_prior=0.5,ma=20,k_factor=0.25,option='GG'):#'SensitivityWeight'     
          if priori==[]:
              priori=self.priori
          prior_evolution=[]
          for j in range(len(self.faults)):
              prior_evolution.append([priori[j]])
-         test_weights=[]            
-         for i in range(len(activations[0])):
+         for i in range(ma):
+             for j in range(len(self.faults)):
+                 prior_evolution[j].append(priori[j])
+         test_weights=[]  
+         f_keys=list(self.faults.keys())          
+         for i in range(ma,len(activations[0])):
+             ma_prior=[]
+             for j in range(len(self.faults)):
+                 new_ma=sum(prior_evolution[j][i-ma:i])/ma
+                 if new_ma>up_lim_prior:
+                     ma_prior.append(up_lim_prior)
+                 else: 
+                     ma_prior.append(new_ma)
+             for j in range(len(self.faults)):
+                 ma_prior[j]=ma_prior[j]/sum(ma_prior)
              gr=groups[i].index(max(groups[i]))
              p_phi=[]
              fault=False
+             activ_sample=[]
              for l in range(len(self.mso_set)):
+                 activ_sample.append(activations[l][i])
                  if activations[l][i]==1:
                      fault=True
+             #print(' Activations: '+str(activ))
              #if an anomally is detected ...  
              if fault:
                  #first you get the probability of this marking for each fault
@@ -1376,7 +1582,7 @@ class fault_detector:
                              zvf=0
                          if self.fault_signature_matrix[j][l]==1:
                              tot=tot+1
-                             p_phi[j]=p_phi[j]+confidences[l][i]
+                             p_phi[j]=p_phi[j]+confidences[l][i]*abs(self.fault_mso_sensitivity[self.mso_set[l]][self.faults[f_keys[j]]][gr])
                      if zvf==1:
                          p_phi[j]=p_phi[j]/tot 
                      elif tot>0:
@@ -1386,10 +1592,11 @@ class fault_detector:
                  try:
                      base=0
                      for j in range(len(self.faults)):
-                         base=base+prior_evolution[j][i]*p_phi[j]
+                         # we test to work without bayesian convergence
+                         base=base+ma_prior[j]*p_phi[j]
                      to_weight=[]
                      for j in range(len(self.faults)):
-                         s=(p_phi[j]*prior_evolution[j][i])/base
+                         s=(p_phi[j]*ma_prior[j])/base
                          to_weight.append(s)
                      # We pass the information to the function to evaluate the probabilities using the FSSM (and maybe FSOM)
                      to_activate=[]
@@ -1404,7 +1611,7 @@ class fault_detector:
                          s=[]
                          base=0
                          for j in range(len(self.faults)):
-                             s.append((k_factor*to_weight[j]+(1-k_factor)*prior_evolution[j][i])/2)
+                             s.append((k_factor*to_weight[j]+(1-k_factor)*ma_prior[j])/2)
                              base=base+s[j]
                          for j in range(len(self.faults)):     
                              prior_evolution[j].append(s[j]/base)

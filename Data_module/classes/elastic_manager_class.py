@@ -189,6 +189,8 @@ class elastic_manager:
          self.connect()
          if probs:
              ty='pm_bgm_data_'
+             names_analysis=self.names_analysis
+             names_analysis.append('group_prob')
              #doc_class='diagnosis_bgm'
          else:
              ty='pm_data_'

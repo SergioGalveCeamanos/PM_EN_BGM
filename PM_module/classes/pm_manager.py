@@ -20,7 +20,7 @@ import os, requests, uuid, json, pickle
 from os import path
 import numpy as np
 import pandas as pd
-from classes.fault_detector_class_ES import fault_detector
+from .fault_detector_class_ES import fault_detector
 from .MSO_selector_GA import find_set_v2
 from .test_cross_var_exam import launch_analysis
 import datetime 
@@ -126,7 +126,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
     do_prob=False
     result=[]
     
-    if filt_db.shape[0]>5:
+if filt_db.shape[0]>5:
     # CHECK MISSING: is the next horizon among these two windows ... should we reevaluate (rewrite some samples in DB) everytime otherwise?
         times=filt_db['timestamp']
         try:
@@ -159,7 +159,6 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                     response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha'],'group_prob':return_dic[entry]['group_prob']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
                 else:
                     response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
-
             #prior_evolution=fm.prior_update(activations, confidences)
             result=[]
             n=-1
@@ -383,7 +382,7 @@ def get_probability(device,current_time,start_time=[],version=""):
     #file, folder = file_location(device)    
     #fm=load_model(file, folder)
     names=['activations','confidence','timestamp','group_prob']
-    body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time]}
+    body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time],'group_prob':1}
     try:
         r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
         # here data will be a list of dicts, in each one all the fields separated by mso
@@ -391,6 +390,7 @@ def get_probability(device,current_time,start_time=[],version=""):
     except requests.exceptions.RequestException as e:  # This is the correct syntax
         traceback.print_exc()
         raise SystemExit(e)
+
     activations=[]
     confidences=[]
     for i in range(len(fm.mso_set)):
@@ -398,10 +398,11 @@ def get_probability(device,current_time,start_time=[],version=""):
         confidences.append(all_data[i][names[1]])
     times=all_data[0][names[2]]
     groups=all_data[0]['group_prob']
-    print(' [I] Example of groups extracted:')
-    print(groups)
+    #print(' [I] Example of groups extracted:')
+    #print(groups)
     docs=[]
-    # one option for the probability calculation, one long interpretation taking all prior probabilities as even    
+    # one option for the probability calculation, one long interpretation taking all prior probabilities as even   
+
     if start_time==[]:
         prior_evo=fm.prior_update(activations, confidences,groups, priori=[])
         n=-1
@@ -429,7 +430,7 @@ def get_probability(device,current_time,start_time=[],version=""):
             priors=fm.get_priors_even()
         if sum(priors)<0.95:
             priors=fm.get_priors_even()
-        prior_evo=fm.prior_update(activations, confidences, priori=priors)
+        prior_evo=fm.prior_update(activations, confidences,groups, priori=priors)
         for i in range(len(prior_evo[0])-1): # we substract one since prior evo includes as index 0 the prior
             n=-1
             for j in fm.faults:
@@ -678,7 +679,6 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     return final_samp
 
 def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False):
-    
     file, folder = file_location(machine,version) 
     do=False
     gen_search=False
@@ -692,7 +692,6 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         if retrain:
             do=True
     if do:
-
         print('[I] Started training process for version: '+version)
         sensors_in_tables=fix_dict(sensors_in_tables)
         faults=fix_dict(faults)
@@ -798,15 +797,17 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
                 file.close()
             if mso_set==[]:
                 mso_set=find_set_v2(fault_manager,theta)
-            
+
         fault_manager.preferent=preferent
         fault_manager.mso_set=mso_set
         fault_manager.fault_signature_matrix_construction()
-        
         t_a=datetime.datetime.now()
         print('[D] Right before training the residuals')
         response_dic=fault_manager.train_residuals(folder,file,cont_cond,predictor='NN',outlayers='No')
+        fault_manager.get_weight_sensitivity()
         print('[D] Right after training the residuals')
+        print('  [I] Fault MSO Sensitivity:  ')
+        print(fault_manager.fault_mso_sensitivity)
         t_b=datetime.datetime.now()
         dif=t_b-t_a
         #fault_manager.Load(folder,file)

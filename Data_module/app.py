@@ -54,8 +54,9 @@ def collect_model_error():
     times = data['times']
     version = data['trained_version']
     probs=False
-    if data['group_prob']==1:
-        probs=True
+    if 'group_prob' in data:
+        if data['group_prob']==1:
+            probs=True
     em.device=device
     d=em.get_analytics(times[0],times[1],version,probs)
     return jsonify(d) #jsonify(response)
