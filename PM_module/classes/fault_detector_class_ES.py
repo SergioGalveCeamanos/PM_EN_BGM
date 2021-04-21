@@ -606,7 +606,7 @@ class residual:
             err=kde_data.values
             #print(err)
             max_l=0
-            #count_undersensed=0
+            count_undersensed=0
             for i in range(kde_data.shape[0]):
                 val=tel.iloc[i].values
                 vals.append(val)
@@ -614,18 +614,23 @@ class residual:
                 projs.append(proj)
                 nor=np.linalg.norm(proj,ord=1)
                 nors.append(nor)
-                last=(abs(err[i])-epsi)/nor
+            # Set lower cap to the norm1 result of the projections
+            nors=np.array(nors)
+            mu=np.percentile(nors,10)
+            condition=nors<mu
+            nors[condition]=mu
+            for i in range(kde_data.shape[0]): 
+                last=(abs(err[i])-epsi)/nors[i]
                 # to avoid the problem of epsilon
                 if last<0:
-                    #count_undersensed=count_undersensed+1
+                    count_undersensed=count_undersensed+1
                     last=0
                 if last>max_l:
                     max_l=last
-                    #max_val=val
-                    #max_e=err[i]
+                    max_val=val
+                    max_e=err[i]
                 trial.append(last)
                 inds.append(i)
-    
             #lamdas[t]=max(trial)
             #print('Cases where epsilon blinded: '+str(count_undersensed))
             #print('Lamda: '+str(max_l))
@@ -638,9 +643,8 @@ class residual:
             #print('Properties of the lamdas found in training: ')
             #print(df_lamd.describe())
             #new_d=df_lamd.sort_values(by=['lamda'],ascending=True)
-            return df_lamd,nors,projs,vals,lmd_mean
+            return df_lamd,nors,projs,vals,lmd_mean,count_undersensed
         except:
-            print(' ---> [!] ERROR In Finding lamda for a given Ho')
             #print(data[t])
             traceback.print_exc()
     
@@ -659,21 +663,27 @@ class residual:
         avg_h3=0
         avg_h4=0
         total_ls=0
-        for i in range(interval[0],interval[1]):
+        total_l=0
+        lamdas_regulariz=(0.1*max(lamdas)/np.mean(lamdas))*math.sqrt(sum((lamdas+1)**2)/len(lamdas))
+        if lamdas_regulariz>2.5:
+            lamdas_regulariz=2.5
+        print('  [REG] LAMBDA penalty for regularization: '+str(lamdas_regulariz))
+        for i in interval:
+            
             l=lamdas[i]
             ind=inds[i]
             if l>lmd_mean:
-                total_ls=total_ls+1
                 val_tot=sum(abs(vals[ind]))
                 for k in range(ho.shape[0]):
                     for j in range(ho.shape[1]):
                         # j are rows -- one linked to each variable 
                         # k are for each of the projections
+                        total_ls=total_ls+1
                         name_ups=str(j)+str(k)
-                        h_1=0.5*(l/lmd_mean)**2
+                        h_1=(l/lmd_mean)**1.5
                         h_2=2*vals[ind][j]/val_tot
-                        h_3=epsi/nors[ind]
-                        h_4=projs[ind][k]
+                        h_3=(epsi)/nors[ind]
+                        h_4=2*projs[ind][k]
                         avg_h1=avg_h1+abs(h_1)
                         avg_h2=avg_h2+abs(h_2)
                         avg_h3=avg_h3+abs(h_3)
@@ -686,6 +696,7 @@ class residual:
                             #print('h='+str(h)+' | h1='+str(h_1)+' | h2='+str(h_2)+' | h3='+str(h_3)+' | h4='+str(h_4))
                             bonfire='rest'
         #print('Averages | h1='+str(avg_h1/total_ls)+' | h2='+str(avg_h2/total_ls)+' | h3='+str(avg_h3/total_ls)+' | h4='+str(avg_h4/total_ls))
+        averages=[avg_h1/total_ls,avg_h2/total_ls,avg_h3/total_ls,avg_h4/total_ls]
         # get average weight for each variable among projs, and average update
         num_pens=0
         average_penalt=0
@@ -704,16 +715,14 @@ class residual:
                 name_ups=str(j)+str(k)
                 # penalty as a regularization along each variable (if the weight )
                 if abs(ho_var_penalty[j])>0:
-                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])*(1/(1+abs(ho[j][k])/abs(ho_var_penalty[j])))
+                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])*(1/(1+abs(ho[j][k])/abs(ho_var_penalty[j])))#*lamdas_regulariz #*(1/(1+abs(ho[j][k])/abs(ho_var_penalty[j])))
                 else:
-                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])
-                    print(' [!] ONE VARIABLE IS NOT USED IN ANY PROJECTION -->'+str(self.source[j]))
-                    print(ho)
+                    ho[j][k]=ho[j][k]+sum(ho_gradients[name_ups])#*lamdas_regulariz
                 update[name_ups]=sum(ho_gradients[name_ups])
                 if update[name_ups]>1.5*average_penalt:
                     bonfire='rest'
                 #print(' [R] L2 reg coef for '+name_ups+' --> '+str((1/(1+abs(sum(ho_gradients[name_ups]))/ho_var_penalty[j]))))
-        return ho,ho_gradients,update
+        return ho,ho_gradients,update,averages
      # alternatives to Uncertainty:
      #      https://towardsdatascience.com/a-hitchhikers-guide-to-mixture-density-networks-76b435826cca
      # KDE implementations comparison
@@ -724,6 +733,7 @@ class residual:
          self.epsilon={}
          self.kde_stats={}
          self.kde={}
+         self.min_projection={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
              print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
@@ -754,11 +764,12 @@ class residual:
                  # here starts the iteration preparation
                  epsilon=kde_data.abs().describe()['mean']/10
                  epsilon_step=kde_data.abs().describe()['std']/50
-                 new_d,nors,projs,vals,lmd_mean=self.one_run(kde_data,tel,ho,epsi=epsilon)
+                 new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho,epsi=epsilon)
                  ho_n=copy.deepcopy(ho)
                  ho_record=[ho]
                  ho_gradients=[]
                  update_record=[]
+                 averages_record=[]
                  lamda_record=[new_d['lamda'].max()]
                  pp=0
                  stop_count=0
@@ -769,65 +780,91 @@ class residual:
                  iterator=0
                  counter=-1
                  mov_avg=10
+                 slow_break=200
                  ratio_evolution=[last_ratio]
                  best_ratio=last_ratio
                  best_lamda=new_d['lamda'].max()
+                 best_score=0
                  while not converged:#new_d['lamda'].max()>2*lmd_mean:
-                     # work in smaller batches
-                     iterator=iterator+1
-                     print('ITERATION # '+str(iterator))
-                     b=0
-                     in_epoch=True
-                     # make batch selection at random
-                     while b<new_d.shape[0] and in_epoch:
-                         counter=counter+1
-                         b=b+batch
-                         if b>(new_d.shape[0]-1):
-                             b=new_d.shape[0]-1
-                             in_epoch=False
-                         ho_n,ho_gradients_n,update=self.update_ho(new_d,nors,projs,vals,lmd_mean,ho_n,epsilon,[b-100,b],alpha=0.0003)
-                         ho_gradients.append(ho_gradients_n)
-                         update_record.append(update)
-                         #print(' ---> Run #'+str(pp))
-                         #print(ho_n)
-                         #print(update)
-                         #print('------------------------------------------')
-                         ho_n=ho_n/sum(sum(abs(ho_n))) # normalized each iteration ?
-                         ho_record.append(ho_n)
-                         # this is quite ineficient?
-                         new_d,nors,projs,vals,lmd_mean=self.one_run(kde_data,tel,ho_n,epsi=epsilon)
-                         lamda_record.append(new_d['lamda'].max())
-                         #print(new_d.describe())
-                         if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00015:
-                             stop_count=stop_count+1
-                             #print(' ------ Stability CONVERGENCE CLOSER ------')
-                             if stop_count>10:
-                                 converged=True
-                         else:
-                             stop_count=0
-                             
-                         last_ratio=lmd_mean/new_d.describe()['lamda']['max']
-                         ratio_evolution.append(last_ratio)            
-                         if counter>mov_avg:
-                             ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
-                             li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
-                             if ri*best_lamda/(best_ratio*li)>1.5:
-                                 stop_overfit=stop_overfit+1
-                                 #print(' ------ Overfitting CONVERGENCE CLOSER ------')
-                                 #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
-                             if stop_overfit>5:
-                                 converged=True
-                         else:
-                             stop_overfit=0
-                         
-                         if last_ratio>best_ratio:
-                             best_ratio=last_ratio
-                             best_lamda=new_d['lamda'].max()
-                     print(new_d.describe())
-                     print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
-                     print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
-                 self.hos[t]=ho_n
-                 self.lamdas[t]=new_d['lamda'].max()
+                    # work in smaller batches
+                    iterator=iterator+1
+                    print('ITERATION # '+str(iterator))
+                    b=0
+                    in_epoch=True
+                    bingo=copy.deepcopy(new_d)
+                    to_drop=[]
+                    # make batch selection at random
+                    while b<new_d.shape[0] and in_epoch:
+                        counter=counter+1
+                        b=b+batch
+                        bat=batch
+                        if b>(new_d.shape[0]-1):
+                            bat=new_d.shape[0]-(b-100)-1
+                            b=new_d.shape[0]-1
+                            in_epoch=False
+                            to_drop=[]
+                        bat_set=bingo.sample(bat)
+                        ho_n,ho_gradients_n,update,averages=self.update_ho(new_d,nors,projs,vals,lmd_mean,ho_n,epsilon,bat_set.index,alpha=0.00015)
+                        if len(to_drop)==0:
+                            to_drop=bat_set
+                        else:
+                            to_drop=to_drop.append(bat_set)
+                        averages_record.append(averages)
+                        ho_gradients.append(ho_gradients_n)
+                        update_record.append(update)
+                        #print(' ---> Run #'+str(pp))
+                        #print(ho_n)
+                        #print(update)
+                        #print('------------------------------------------')
+                        ho_n=ho_n/sum(sum(abs(ho_n))) # normalized each iteration ?
+                        ho_record.append(ho_n)
+                        # this is quite ineficient?
+                        new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho_n,epsi=epsilon)
+                        bingo=copy.deepcopy(new_d)
+                        bingo=bingo.drop(to_drop.index)
+                        lamda_record.append(new_d['lamda'].max())
+                        print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
+                        print(new_d.describe())
+                        if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00025:
+                            stop_count=stop_count+1
+                            print(' ------ Stability CONVERGENCE CLOSER ------')
+                            if len(ratio_evolution)>slow_break:
+                                if np.std(ratio_evolution[-slow_break:])<0.003:
+                                    converged=True
+                            if stop_count>10:
+                                converged=True
+                        else:
+                            stop_count=0
+                        last_ratio=lmd_mean/new_d.describe()['lamda']['max']
+                        ratio_evolution.append(last_ratio)            
+                        if counter>mov_avg:
+                            ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
+                            li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
+                            last_score=((ri/best_ratio)**2)*(best_lamda/li+0.5)
+                            print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                            if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.0:
+                                stop_overfit=stop_overfit+1
+                                print(' ------ Overfitting CONVERGENCE CLOSER ------')
+                                print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                            else:
+                                stop_overfit=0
+                            if stop_overfit>10:
+                                converged=True
+                        if last_ratio>best_ratio:
+                            print('  [I] Recorded new best score!: '+str(ri))
+                            best_score=last_score
+                            best_ratio=last_ratio
+                            best_lamda=new_d['lamda'].max()
+                            best_ho=ho_n
+               
+                 if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.1:  
+
+                     self.hos[t]=best_ho
+                     self.lamdas[t]=best_lamda
+                 else:
+                     self.hos[t]=ho_n
+                     self.lamdas[t]=new_d['lamda'].max()
+                 self.min_projection[t]=min(nors)
                  self.epsilon[t]=epsilon
              except:
                  print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
@@ -889,10 +926,13 @@ class residual:
      
      # given the set of samples we evaluate how liekly are those errors to happen -- For the zonotope approach
      def get_probs(self,telem,error_set,group,m_y):
-         lim=self.lamdas[group]*np.linalg.norm(telem.dot(self.hos[group]),ord=1)+self.epsilon[group]
+         nor=np.linalg.norm(telem.dot(self.hos[group]),ord=1)
+         if nor<self.min_projection[group]:
+             nor=self.min_projection[group]
+         lim=self.lamdas[group]*nor+self.epsilon[group]
          # using lim/2 we ensure that at least the cut explored covers the 66% of the gaussian distribution (lower limit to the sensibility of the confidence!!)
-         if lim/2>max(m_y[group]):
-             lim=2*max(m_y[group])
+         #if lim/2>max(m_y[group]):
+             #lim=2*max(m_y[group])
          probs=self.gaussian(error_set,lim/2)
          return probs
      
