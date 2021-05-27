@@ -13,6 +13,7 @@ from classes.pm_manager import get_available_models
 import datetime 
 import pandas as pd
 import pickle
+import traceback
 
 # start the object
 app = Flask(__name__)
@@ -116,14 +117,18 @@ def get_devices():
 # For the test phase the data will be given completly for the sligtly modified version of FM_ES
 @app.route('/new-model', methods=['POST'])
 def new_model():
+
     data = request.get_json()
+    print('Received Data: ')
+    print(data)
+
     #print(data)
     machine = int(data['machine'])
-    
     #response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,mso_set,sensors,sensor_eqs,preferent,time_bands,retrain=True)
     #return jsonify(response) #jsonify(response)
     #try:
     n_model='/models/'+data['machine']+data['version']+'.pkl'
+    
     filehandler = open(n_model, 'wb')
     pickle.dump(data, filehandler)
     filehandler.close()
@@ -139,6 +144,7 @@ def new_model():
     except:
         print("Error Loading the task to the CSV -> New Training not registered")
         worked='False'
+        traceback.print_exc()
     if worked=='False':
         new_row={'device': machine,'time_start': 'N/A','time_stop': 'N/A','date': str(datetime.datetime.now()),'status': 'ToDo','type':'build_model','version':data['version']}
         new={'device': [],'time_start': [],'time_stop': [],'date': [],'status': [],'type':[]}

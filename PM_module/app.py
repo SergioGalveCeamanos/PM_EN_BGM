@@ -32,7 +32,6 @@ from streamlit import caching
 
 
 def build_model(data):
-if True:
     print(' [D] Extracting data from file saved from Regional Manager')
     mso_path = data['mso_path']
     host = data['host']
@@ -147,7 +146,6 @@ def cycle():
                         print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
                 
             elif task['type']=='build_model':
-if True:
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
                 filehandler = open(n_model, 'rb') 
                 data = pickle.load(filehandler)

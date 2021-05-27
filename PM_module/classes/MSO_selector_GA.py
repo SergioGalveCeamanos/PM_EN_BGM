@@ -263,10 +263,11 @@ def find_set_v2(fault_manager,theta_lr):
     detectable_faults=list(fault_activations.keys())
     #get those faults that cant be detectable and isolable so that are not taken into acount in the evaluation of the minimal sets
     i=-1
+
     for n in range(len(fault_activations)):
         go=True
         for j in no_isolable:
-            if n in j:
+            if positions[n] in j:
                 go = False
         # the group of no isolable faults are grouped     
         if go:
@@ -288,6 +289,7 @@ def find_set_v2(fault_manager,theta_lr):
                                 no_isolable[i].append(positions[k])
                                 detectable_faults.remove(positions[k])
     #prepare reference dics that can link the old faults with the new ones while preparing the signature of the msos in a dic format
+
     dic_new_to_old={}
     dic_old_to_new={}
     pos=0
@@ -317,7 +319,7 @@ def find_set_v2(fault_manager,theta_lr):
             else:
                 l.append(0)
         mso_vec[mso]=l
- 
+
     theta=[]
     for i in range(len(fault_manager.models)):
         theta.append([])

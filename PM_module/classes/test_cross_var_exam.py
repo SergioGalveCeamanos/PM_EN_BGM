@@ -62,8 +62,11 @@ def train_model(train,test,mso_variables,mso_outs):
     return new_model
 
  # 0 = not used, 1 = used, 2 = target
-def get_new_ind_row(i,target,source):
-    template_index={'index': 0,'InvInfoCirc1.Info_MotPwr': 0,'EbmpapstFan_1_Mng.ElectrInfo_EBM_1.CurrPower': 0,'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val': 0,'WaterFlowMeter': 0,'SuctSH_Circ1': 0,'DscgTempCirc1': 0,'SubCoolCir1': 0,'EvapTempCirc1': 0,'CondTempCirc1': 0,'W_OutTempUser': 0,'W_OutTempEvap': 0,'W_InTempUser': 0,'FiltPress': 0,'PumpPress': 0,'ExtTemp': 0}
+def get_new_ind_row(i,target,source,variables):
+    template_index={'index': 0}
+    for v in variables:
+        template_index[v]=0
+    #template_index={'index': 0,'InvInfoCirc1.Info_MotPwr': 0,'EbmpapstFan_1_Mng.ElectrInfo_EBM_1.CurrPower': 0,'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val': 0,'WaterFlowMeter': 0,'SuctSH_Circ1': 0,'DscgTempCirc1': 0,'SubCoolCir1': 0,'EvapTempCirc1': 0,'CondTempCirc1': 0,'W_OutTempUser': 0,'W_OutTempEvap': 0,'W_InTempUser': 0,'FiltPress': 0,'PumpPress': 0,'ExtTemp': 0}
     template_index['index']=i
     template_index[target]=2
     for s in source:
@@ -108,7 +111,7 @@ def silhouette_score(estimator, X):
 
 
 # Main trigger
-def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test,data_kde):
+def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test,data_kde,cont_cond,variables):
     ################################################################################
     # GET LIST OF LINKED VARIABLES TO LAUNCH ITERATIVE TRAINING
     msos=[]
@@ -166,7 +169,7 @@ def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test
         data_test[var] = scaler.transform(data_test[var].values.reshape(-1,1))
             
     
-    cont_cond=['ExtTemp', 'InvInfoCirc1.Info_MotPwr', 'W_OutTempUser', 'WaterFlowMeter']
+    #cont_cond=['ExtTemp', 'InvInfoCirc1.Info_MotPwr', 'W_OutTempUser', 'WaterFlowMeter']
     new_df=data_kde[cont_cond]
     no_outl=new_df[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
     grid = GridSearchCV(MiniBatchKMeans(),
@@ -211,7 +214,7 @@ def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test
                 #load model
                 i=i+1
                 models[i]=model
-                index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],var_links[v0]),ignore_index=True)
+                index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],var_links[v0],variables),ignore_index=True)
                 
                 main_w_1=get_biggest(model['coeff'])
                 for n in main_w_1:
@@ -222,7 +225,7 @@ def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test
                         #load model
                         i=i+1
                         models[i]=model
-                        index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_1),ignore_index=True)
+                        index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_1,variables),ignore_index=True)
                         main_w_2=get_biggest(model['coeff'])
                         for r in main_w_2:
                             source_2=copy.deepcopy(source_1)
@@ -232,7 +235,7 @@ def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test
                                 #load model
                                 i=i+1
                                 models[i]=model
-                                index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_2),ignore_index=True)
+                                index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_2,variables),ignore_index=True)
                                 main_w_3=get_biggest(model['coeff'])
                                 for z in main_w_3:
                                     source_3=copy.deepcopy(source_2)
@@ -242,7 +245,7 @@ def launch_analysis(str_matrix,msos_path,sensors,sensor_eqs,sens_codes,data_test
                                         #load model
                                         i=i+1
                                         models[i]=model
-                                        index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_3),ignore_index=True)
+                                        index_to_models=index_to_models.append(get_new_ind_row(i,sens_codes[v0],source_3,variables),ignore_index=True)
                                         #main_w_4=get_biggest(model['coeff'])
                                 
     theta=np.zeros((len(sens_codes),len(sens_codes)))

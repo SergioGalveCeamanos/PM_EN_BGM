@@ -13,7 +13,7 @@ from config import Config
 from classes.elastic_manager_class import elastic_manager
 import traceback
 
-host='52.169.220.43:9200'
+host='137.116.224.197:9200'
 machine=00000
 
 # start the object

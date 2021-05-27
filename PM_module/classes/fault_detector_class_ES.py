@@ -823,11 +823,12 @@ class residual:
                         bingo=copy.deepcopy(new_d)
                         bingo=bingo.drop(to_drop.index)
                         lamda_record.append(new_d['lamda'].max())
-                        print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
+                        
                         print(new_d.describe())
                         if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00025:
                             stop_count=stop_count+1
-                            print(' ------ Stability CONVERGENCE CLOSER ------')
+                            #print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
+                            #print(' ------ Stability CONVERGENCE CLOSER ------')
                             if len(ratio_evolution)>slow_break:
                                 if np.std(ratio_evolution[-slow_break:])<0.003:
                                     converged=True
@@ -841,18 +842,17 @@ class residual:
                             ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
                             li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
                             last_score=((ri/best_ratio)**2)*(best_lamda/li+0.5)
-                            print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                            #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
                             if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.0:
                                 stop_overfit=stop_overfit+1
-                                print(' ------ Overfitting CONVERGENCE CLOSER ------')
-                                print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                                #print(' ------ Overfitting CONVERGENCE CLOSER ------')
+                                #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
                             else:
                                 stop_overfit=0
                             if stop_overfit>10:
                                 converged=True
                         if last_ratio>best_ratio:
-                            print('  [I] Recorded new best score!: '+str(ri))
-                            best_score=last_score
+                            #best_score=last_score
                             best_ratio=last_ratio
                             best_lamda=new_d['lamda'].max()
                             best_ho=ho_n
@@ -866,6 +866,8 @@ class residual:
                      self.lamdas[t]=new_d['lamda'].max()
                  self.min_projection[t]=min(nors)
                  self.epsilon[t]=epsilon
+                 print(' ---> [I] In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t))
+                 print('     Lamda: '+str(self.lamdas[t])+' | Best Ratio: '+str(best_ratio)+' | Last Ratio: '+str(last_ratio))
              except:
                  print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
                  print(data[t])
@@ -1258,6 +1260,10 @@ class fault_detector:
             prev=keep[i]
         return sorted_s[keep]
     
+     # to filter when the machine is in a transitory state until equilibrium is reached
+     def filter_stability(self,samples,out_var,target,delta=1.0):
+        keep=np.abs(samples[out_var].values-target)>delta
+        return samples[keep]
     # LINKED TO PM_MANAGER CODE --> These filtering functions return a bool list that can be used easily by the pm_manager, being prepared ad hoc
     # we also want to locate the transitions in general so we will provide for a given sample (Dataframe) the bool list of values above limits
      def find_transitions(self,data,date_field='timestamp',ma_size=10,max_ca_jump=[],main_ca=[]):
@@ -1268,7 +1274,7 @@ class fault_detector:
         if max_ca_jump==[]:
             max_ca_jump=self.max_ca_jump
             main_ca=self.main_ca
-        if self.device!=71471:
+        if self.device!=71471 or self.device!=74124:
             ma_size=int(ma_size/self.aggSeconds)
         else:
             ma_size=int(ma_size/0.5)

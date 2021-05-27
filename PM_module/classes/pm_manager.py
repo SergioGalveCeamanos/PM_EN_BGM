@@ -20,9 +20,9 @@ import os, requests, uuid, json, pickle
 from os import path
 import numpy as np
 import pandas as pd
-from .fault_detector_class_ES import fault_detector
-from .MSO_selector_GA import find_set_v2
-from .test_cross_var_exam import launch_analysis
+from classes.fault_detector_class_ES import fault_detector
+from classes.MSO_selector_GA import find_set_v2
+from classes.test_cross_var_exam import launch_analysis
 import datetime 
 import traceback
 import copy
@@ -96,7 +96,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
     fm=load_model(file, folder)
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
     ######## NOT LIKE THIS --> MUST BE CHANGED #############
-    if device==71471:
+    if device==71471 or device==74124:
         aggSeconds=1
     ########################################################
     body={'device':str(device),'names':names,'times':times_b,'aggSeconds':aggSeconds}
@@ -117,7 +117,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
     #print(db)
     db_sort=copy.deepcopy(db.sort_values('timestamp'))
     # ANOTHER PATCH ---> a Parametric Filter is needed
-    if device==71471:
+    if device==71471 or device==74124:
         db_sort.loc[:,'UnitStatus']=db_sort.loc[:,'UnitStatus']*10
         db.loc[:,'UnitStatus']=db.loc[:,'UnitStatus']*10
     #db_sort = db_sort.loc[db_sort['UnitStatus'] == 9.0]
@@ -126,7 +126,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
     do_prob=False
     result=[]
     
-if filt_db.shape[0]>5:
+    if filt_db.shape[0]>5:
     # CHECK MISSING: is the next horizon among these two windows ... should we reevaluate (rewrite some samples in DB) everytime otherwise?
         times=filt_db['timestamp']
         try:
@@ -239,8 +239,8 @@ def load_config(device,current_time,msos,version=""):
 
 # get forecast and the evaluation against the boundaries probability distribution 
 def get_forecast(device,current_time,agg_sec=5,version=""):
-    if device==71471:
-        agg_sec=0.5
+    if device==71471 or device==74124:
+        agg_sec=1
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     # here we just want to hit the closest config to a given date 
@@ -678,7 +678,7 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     # we return the    
     return final_samp
 
-def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False):
+def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP'):
     file, folder = file_location(machine,version) 
     do=False
     gen_search=False
@@ -692,6 +692,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         if retrain:
             do=True
     if do:
+if True:
         print('[I] Started training process for version: '+version)
         sensors_in_tables=fix_dict(sensors_in_tables)
         faults=fix_dict(faults)
@@ -702,6 +703,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         fault_manager.MSO_residuals()
         fault_manager.time_bands=time_bands
         names,times_b=fault_manager.get_data_names(option='CarolusRex',times=time_bands)
+        names.append(target_var)
         body={'device':machine,'names':names,'times':times_b,'aggSeconds':aggSeconds}
         #headers = {'Content-Type': 'application/json'}
         file_data='/models/file_data.csv'
@@ -718,12 +720,34 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             no_files=True
         #print(fault_manager.training_data)
         if no_files:
+            base_time=30 #minutes per request
+            if len(times_b)==1:
+                start=times_b[0][0]
+                end=times_b[0][1]
+                new_set=[]
+                go_on=True
+                from_t=start
+                until_t=''
+                i=0
+                while go_on:
+                    i=i+1
+                    next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
+                    next_t=next_t.isoformat()
+                    until_t=next_t[:(len(next_t)-3)]+'Z'
+                    new_set.append([from_t,until_t])
+                    from_t=until_t
+                    if until_t>=end:
+                        go_on=False
+                time_set=new_set
+            else:
+                time_set=times_b
+
             try:
                 #manager = multiprocessing.Manager()
                 #shared_list = manager.list()
                 shared_list = []
                 #jobs = []
-                for time in times_b:
+                for time in time_set:
                     #p = multiprocessing.Process(target=collect_timeband, args=(time,machine,names,aggSeconds,shared_list))
                     #p.start()
                     #jobs.append(p)
@@ -745,11 +769,16 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             print('All Data Collected')
             print(data)
             # Filter Erratic rows --> ONLY for UC8 71471
+
             if machine=='71471':
                 keep_1=data['EvapTempCirc1']<100
                 step_one=data[keep_1]
                 keep_2=step_one['SubCoolCir1']<100
                 filtered=copy.deepcopy(step_one[keep_2])
+                filtered.loc[:,'UnitStatus']=filtered.loc[:,'UnitStatus']*10
+            elif machine=='74124':
+                keep_1=data['EvapTempCirc1']<100
+                filtered=copy.deepcopy(data[keep_1])
                 filtered.loc[:,'UnitStatus']=filtered.loc[:,'UnitStatus']*10
             #####
             # Limit maximum number of samples to avoid excesive overfitting
@@ -758,6 +787,8 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             #else:
                 #data_sampled=filtered
             filt_data=fault_manager.filter_samples(filtered)
+            target=filt_data.pop(target_var)
+            filt_data=fault_manager.filter_stability(filt_data,out_var,target)
             fault_manager.training_data=homo_sampling(filt_data,cont_cond,s=sam)
             common = filt_data.merge(fault_manager.training_data, on=["timestamp"])
             rest=filt_data[~filt_data.timestamp.isin(common.timestamp)]
@@ -786,7 +817,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             except:
                 preprocesed=False
             if not preprocesed:
-                theta, preferent = launch_analysis(matrix, mso_path, sensors, sensor_eqs, sensors_in_tables, fault_manager.test_data, fault_manager.kde_data)
+                theta, preferent = launch_analysis(matrix, mso_path, sensors, sensor_eqs, sensors_in_tables, fault_manager.test_data, fault_manager.kde_data, cont_cond, list(sensors_in_tables.values()))
                 #from classes.MSO_selector_GA import find_set_v2,ga_search,angle,check_detection,check_isolability,compare_activation,cost_linearizable,cost_variables,dotproduct,length,mutate,sig_cost,single_point_cross
                 print('--- [I] Result of new analysis for mso and target selection: ')
                 print(theta)
