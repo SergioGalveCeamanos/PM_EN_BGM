@@ -20,9 +20,9 @@ import os, requests, uuid, json, pickle
 from os import path
 import numpy as np
 import pandas as pd
-from classes.fault_detector_class_ES import fault_detector
-from classes.MSO_selector_GA import find_set_v2
-from classes.test_cross_var_exam import launch_analysis
+from .fault_detector_class_ES import fault_detector
+from .MSO_selector_GA import find_set_v2
+from .test_cross_var_exam import launch_analysis
 import datetime 
 import traceback
 import copy
@@ -91,42 +91,75 @@ def load_unit_data(device,version="",data_file='/models/model_data_'):
         pickle.dump(d, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],extra_name=[]):
+def get_analysis(device,time_start,time_stop,version="",aggSeconds=1,option=[],extra_name=[]):
+
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+    names.append(fm.target_var)
     ######## NOT LIKE THIS --> MUST BE CHANGED #############
-    if device==71471 or device==74124:
+    if int(device)==71471 or int(device)==74124:
         aggSeconds=1
     ########################################################
     body={'device':str(device),'names':names,'times':times_b,'aggSeconds':aggSeconds}
     #headers = {'Content-Type': 'application/json'}
     try:
         # headers=headers
+        print(' HTTP message Body: ')
+        print(body)
         r = requests.post('http://db_manager:5001/collect-data',json = body) # 'http://db_manager:5001/collect-data'
         data=r.json()
     except:  # This is the correct syntax
         print(' [!] Error gathering Telemetry')
-    activations=[]
-    msos=[]
-    confidences=[]
-    group_probabilities=[]
-    residuals={}
-    response={}
-    db=pd.DataFrame(data)
-    #print(db)
-    db_sort=copy.deepcopy(db.sort_values('timestamp'))
-    # ANOTHER PATCH ---> a Parametric Filter is needed
-    if device==71471 or device==74124:
-        db_sort.loc[:,'UnitStatus']=db_sort.loc[:,'UnitStatus']*10
-        db.loc[:,'UnitStatus']=db.loc[:,'UnitStatus']*10
-    #db_sort = db_sort.loc[db_sort['UnitStatus'] == 9.0]
-    filt_db=fm.filter_samples(db_sort)
-    #print(filt_db)
-    do_prob=False
-    result=[]
-    
+
+    try:
+        partial_message=' [E] The filtering process failed after: '
+        code_error=0
+        activations=[]
+        msos=[]
+        confidences=[]
+        group_probabilities=[]
+        residuals={}
+        response={}
+        db=pd.DataFrame(data)
+        #print(db)
+        db_sort=copy.deepcopy(db.sort_values('timestamp'))
+        partial_message=partial_message+'sorting values, '
+        code_error=code_error+1
+        # ANOTHER PATCH ---> a Parametric Filter is needed
+        if int(device)==71471 or int(device)==74124:
+            db_sort.loc[:,'UnitStatus']=db_sort.loc[:,'UnitStatus']*10
+            db.loc[:,'UnitStatus']=db.loc[:,'UnitStatus']*10
+            partial_message=partial_message+'adapting UnitStatus, '
+            code_error=code_error+1
+        #db_sort = db_sort.loc[db_sort['UnitStatus'] == 9.0]
+        filt_db=fm.filter_samples(db_sort)
+        partial_message=partial_message+'filtering samples, '
+        code_error=code_error+1
+        target=filt_db.pop(fm.target_var)
+        if fm.filter_stab:
+            filt_db=fm.filter_stability(filt_db,target)
+            partial_message=partial_message+'stability filtering '
+            code_error=code_error+1
+        #print(filt_db)
+        do_prob=False
+        result=[]
+    except:
+        print(partial_message)
+        traceback.print_exc()
+        if code_error==0:
+            print(data)
+        elif code_error==1:
+            print(db_sort)
+        elif code_error==2:
+            print(db_sort.loc[:,'UnitStatus'])
+        elif code_error==3:
+            print(db_sort.loc[:,'UnitStatus'])
+            print(filt_db)
+        elif code_error==4:
+            print(filt_db)
     if filt_db.shape[0]>5:
+
     # CHECK MISSING: is the next horizon among these two windows ... should we reevaluate (rewrite some samples in DB) everytime otherwise?
         times=filt_db['timestamp']
         try:
@@ -138,7 +171,6 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print('  [T] TOTAL evaluation computing time ---> '+str(dif))
-
             with_probs=False
             if 'group_prob' in return_dic[fm.get_dic_entry(fm.mso_set[0])]:
                 with_probs=True
@@ -160,6 +192,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=5,option=[],e
                 else:
                     response[entry]={'known':fm.models[mso].known,'error':return_dic[entry]['error'],'high_bound':return_dic[entry]['high'],'low_bound':return_dic[entry]['low'],'activations':return_dic[entry]['phi'],'confidence':return_dic[entry]['alpha']} # ,'residual_forecast':f,'forecast_alpha':al,'forecast_validation_error':Ew
             #prior_evolution=fm.prior_update(activations, confidences)
+            
             result=[]
             n=-1
             for t in forget:
@@ -678,7 +711,8 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     # we return the    
     return final_samp
 
-def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP'):
+def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True):
+   
     file, folder = file_location(machine,version) 
     do=False
     gen_search=False
@@ -692,13 +726,12 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         if retrain:
             do=True
     if do:
-if True:
         print('[I] Started training process for version: '+version)
         sensors_in_tables=fix_dict(sensors_in_tables)
         faults=fix_dict(faults)
         sensors=fix_dict(sensors)
         #print(faults)
-        fault_manager = fault_detector(file,mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=aggSeconds)
+        fault_manager = fault_detector(file,mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=aggSeconds,filter_stab=filter_stab)
         fault_manager.read_msos()
         fault_manager.MSO_residuals()
         fault_manager.time_bands=time_bands
@@ -720,6 +753,7 @@ if True:
             no_files=True
         #print(fault_manager.training_data)
         if no_files:
+if True:
             base_time=30 #minutes per request
             if len(times_b)==1:
                 start=times_b[0][0]
@@ -745,6 +779,7 @@ if True:
             try:
                 #manager = multiprocessing.Manager()
                 #shared_list = manager.list()
+if True:
                 shared_list = []
                 #jobs = []
                 for time in time_set:
@@ -788,7 +823,8 @@ if True:
                 #data_sampled=filtered
             filt_data=fault_manager.filter_samples(filtered)
             target=filt_data.pop(target_var)
-            filt_data=fault_manager.filter_stability(filt_data,out_var,target)
+            if filter_stab:
+                filt_data=fault_manager.filter_stability(filt_data,target)
             fault_manager.training_data=homo_sampling(filt_data,cont_cond,s=sam)
             common = filt_data.merge(fault_manager.training_data, on=["timestamp"])
             rest=filt_data[~filt_data.timestamp.isin(common.timestamp)]
@@ -828,7 +864,6 @@ if True:
                 file.close()
             if mso_set==[]:
                 mso_set=find_set_v2(fault_manager,theta)
-
         fault_manager.preferent=preferent
         fault_manager.mso_set=mso_set
         fault_manager.fault_signature_matrix_construction()

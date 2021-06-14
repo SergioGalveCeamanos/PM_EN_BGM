@@ -146,6 +146,7 @@ def cycle():
                         print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
                 
             elif task['type']=='build_model':
+if True:
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
                 filehandler = open(n_model, 'rb') 
                 data = pickle.load(filehandler)
@@ -218,6 +219,6 @@ if __name__ == '__main__':
     # LOAD MODELS IN DICTIONARY
     #app.run(port=5002,threaded=True)
     while True:
-        time.sleep(20)
+        time.sleep(1)
         cycle()
 

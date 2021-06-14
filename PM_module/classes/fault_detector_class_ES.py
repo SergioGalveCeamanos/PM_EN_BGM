@@ -402,7 +402,7 @@ class residual:
 
 ###################################### Training ################################################
      # Function to launch the training of the model given a set of data and the variable to predict (aka objective as a string)
-     #@ignore_warnings(category=ConvergenceWarning)
+     # ignore_warnings(category=ConvergenceWarning)
      def train(self,data,validation,kde_data,source,objective,cont_cond,predictor='NN',option2='PCA',acceptance=2):  
          self.cont_cond=cont_cond
          text1="The MSO #"+str(self.mso_reduced_index)+" takes the variable "+objective+" as output"
@@ -422,12 +422,12 @@ class residual:
              #print('[!] No Filtering Parameter')
          # drop unused variables before starting 
 
-         for name in list(data.columns):
+for name in list(data.columns):
              if (name not in source) and (name!=objective) and (name not in self.kde_dims) and (name not in self.cont_cond):
                  data=data.drop([name],axis=1)
                  validation=validation.drop([name],axis=1)
                  kde_data=kde_data.drop([name],axis=1)
- 
+if True:
          data = data.astype(float)
          validation=validation.astype(float)
          kde_data=kde_data.astype(float)
@@ -437,7 +437,7 @@ class residual:
          #train_stats.pop(objective)
          train_stats = train_stats.transpose()
          self.train_stats=train_stats
-
+if True:
          train_labels = data[objective]
          test_labels = validation[objective]
          kde_labels = kde_data[objective]
@@ -455,12 +455,13 @@ class residual:
          tole=0.001
          while not_converged:
              try:
+                 self.regions=[]
                  new_df=normed_kde[self.cont_cond]
                  no_outl=new_df[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
                  # baseline Kmeans
 
                  grid = GridSearchCV(MiniBatchKMeans(),
-                    {'n_clusters': [5,6,7,8,9],'batch_size':[100,300,500,750,1000],'max_iter':[1200]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                    {'n_clusters': [3,4,5,6,7],'batch_size':[100,300,500,750,1000],'max_iter':[1200]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
 
                  grid.fit(no_outl.values)
 
@@ -476,11 +477,13 @@ class residual:
                  
                  self.rejected_clusters=[]
                  clusters=np.unique(groups)
+                 not_converged=False
                  for n in range(len(counts_groups_ratio)):
                      if counts_groups_ratio[n]>self.acceptance_proportion_samples:
                          self.regions.append(clusters[n])
                      else:
                          self.rejected_clusters.append(clusters[n])
+                         not_converged=True
                  print(np.unique(groups,return_counts=True))
                  t_b=datetime.datetime.now()
                  dif=t_b-t_a
@@ -492,8 +495,8 @@ class residual:
          print('    [*] MSO'+str(self.mso_index)+' Clustering BGM ---> '+str(dif))
          ###################################################################
          #print(self.bgm.weights_)
+if True:
          test_groups=self.bgm.predict(normed_test_data[self.cont_cond].values)
-        
          train_data_groups={}
          test_data_groups={}
          kde_data_groups={}
@@ -507,6 +510,7 @@ class residual:
          new_model_set={}
          error=[]
          for t in self.regions: 
+if True:
              new_model={}
              X_train = train_data_groups[t][source]
              y_train = train_data_groups[t][objective]
@@ -549,17 +553,18 @@ class residual:
                      new_model['offset']=lin_reg_mod.intercept_
                      new_model_set[t]=new_model
                      not_converged=False
-                     
                  except ConvergenceWarning:
                      print('  - Convergence Warning training EN in MSO '+str(self.mso_reduced_index)+' in region #'+str(t)) 
                      print("Tolerance: "+str(tole))
                      tole=tole*5
          self.model=new_model_set
          # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+if True:
          kde_groups=self.bgm.predict(normed_kde[self.cont_cond].values)
          kde_feed={}
          # we prepare a dic of arrays with the errors pertinent to each model
          for t in self.regions:
+if True:
              locats=np.where(kde_groups == t)[0]
              data_grouped=normed_kde.iloc[locats]
              kde_tr=data_grouped[source]
@@ -597,6 +602,7 @@ class residual:
      # Functions to search for the best possible Ho
      def one_run(self,kde_data,tel,ho,epsi=0.0):
         try:
+if True:
             trial=[]
             inds=[]
             nors=[]
@@ -616,7 +622,8 @@ class residual:
                 nors.append(nor)
             # Set lower cap to the norm1 result of the projections
             nors=np.array(nors)
-            mu=np.percentile(nors,10)
+            mu=np.percentile(nors,15)
+if True:
             condition=nors<mu
             nors[condition]=mu
             for i in range(kde_data.shape[0]): 
@@ -667,7 +674,7 @@ class residual:
         lamdas_regulariz=(0.1*max(lamdas)/np.mean(lamdas))*math.sqrt(sum((lamdas+1)**2)/len(lamdas))
         if lamdas_regulariz>2.5:
             lamdas_regulariz=2.5
-        print('  [REG] LAMBDA penalty for regularization: '+str(lamdas_regulariz))
+        #print('  [REG] LAMBDA penalty for regularization: '+str(lamdas_regulariz))
         for i in interval:
             
             l=lamdas[i]
@@ -696,7 +703,7 @@ class residual:
                             #print('h='+str(h)+' | h1='+str(h_1)+' | h2='+str(h_2)+' | h3='+str(h_3)+' | h4='+str(h_4))
                             bonfire='rest'
         #print('Averages | h1='+str(avg_h1/total_ls)+' | h2='+str(avg_h2/total_ls)+' | h3='+str(avg_h3/total_ls)+' | h4='+str(avg_h4/total_ls))
-        averages=[avg_h1/total_ls,avg_h2/total_ls,avg_h3/total_ls,avg_h4/total_ls]
+        #averages=[avg_h1/total_ls,avg_h2/total_ls,avg_h3/total_ls,avg_h4/total_ls]
         # get average weight for each variable among projs, and average update
         num_pens=0
         average_penalt=0
@@ -722,7 +729,7 @@ class residual:
                 if update[name_ups]>1.5*average_penalt:
                     bonfire='rest'
                 #print(' [R] L2 reg coef for '+name_ups+' --> '+str((1/(1+abs(sum(ho_gradients[name_ups]))/ho_var_penalty[j]))))
-        return ho,ho_gradients,update,averages
+        return ho,ho_gradients,update
      # alternatives to Uncertainty:
      #      https://towardsdatascience.com/a-hitchhikers-guide-to-mixture-density-networks-76b435826cca
      # KDE implementations comparison
@@ -737,141 +744,142 @@ class residual:
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
          for t in self.regions:
              print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-             try:
-                 ho=self.model[t]['cov']
-                 err=data[t]['error']
-                 #print(type(err))
-                 #print(len(err))
-                 tel=data[t]['data']
-                 to_filt=data[t]['cont_cond']
-                 to_filt['error']=err
-                 #print(to_filt)
-                 #kde_data=pd.DataFrame({'error':err})
-                 kde_data=to_filt['error']
-                 filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
-                 kde_data=kde_data[filt_outl]
-                 tel=tel[filt_outl]
-                 #print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-                 #print(kde_data)
-                 print('      [I] Values eliminated as outlayers in Zonotope Uncentrainty Bounding:')
-                 if to_filt.shape[0]>150:
-                     print(to_filt.head(150))
-                 else:
-                     print(to_filt.head(to_filt.shape[0]))
-                 train_stats = kde_data.describe()
-                 self.kde_stats[t] = train_stats.transpose()
-                 err=kde_data.values
-                 # here starts the iteration preparation
-                 epsilon=kde_data.abs().describe()['mean']/10
-                 epsilon_step=kde_data.abs().describe()['std']/50
-                 new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho,epsi=epsilon)
-                 ho_n=copy.deepcopy(ho)
-                 ho_record=[ho]
-                 ho_gradients=[]
-                 update_record=[]
-                 averages_record=[]
-                 lamda_record=[new_d['lamda'].max()]
-                 pp=0
-                 stop_count=0
-                 stop_overfit=0
-                 batch=100
-                 last_ratio=lmd_mean/new_d.describe()['lamda']['max']
-                 converged=False
-                 iterator=0
-                 counter=-1
-                 mov_avg=10
-                 slow_break=200
-                 ratio_evolution=[last_ratio]
-                 best_ratio=last_ratio
-                 best_lamda=new_d['lamda'].max()
-                 best_score=0
-                 while not converged:#new_d['lamda'].max()>2*lmd_mean:
-                    # work in smaller batches
-                    iterator=iterator+1
-                    print('ITERATION # '+str(iterator))
-                    b=0
-                    in_epoch=True
-                    bingo=copy.deepcopy(new_d)
-                    to_drop=[]
-                    # make batch selection at random
-                    while b<new_d.shape[0] and in_epoch:
-                        counter=counter+1
-                        b=b+batch
-                        bat=batch
-                        if b>(new_d.shape[0]-1):
-                            bat=new_d.shape[0]-(b-100)-1
-                            b=new_d.shape[0]-1
-                            in_epoch=False
-                            to_drop=[]
-                        bat_set=bingo.sample(bat)
-                        ho_n,ho_gradients_n,update,averages=self.update_ho(new_d,nors,projs,vals,lmd_mean,ho_n,epsilon,bat_set.index,alpha=0.00015)
-                        if len(to_drop)==0:
-                            to_drop=bat_set
-                        else:
-                            to_drop=to_drop.append(bat_set)
-                        averages_record.append(averages)
-                        ho_gradients.append(ho_gradients_n)
-                        update_record.append(update)
-                        #print(' ---> Run #'+str(pp))
-                        #print(ho_n)
-                        #print(update)
-                        #print('------------------------------------------')
-                        ho_n=ho_n/sum(sum(abs(ho_n))) # normalized each iteration ?
-                        ho_record.append(ho_n)
-                        # this is quite ineficient?
-                        new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho_n,epsi=epsilon)
+if True:
+             region_untrained=True
+             while region_untrained:
+                 try:
+                     ho=self.model[t]['cov']
+                     err=data[t]['error']
+                     #print(type(err))
+                     #print(len(err))
+                     tel=data[t]['data']
+                     to_filt=copy.deepcopy(data[t]['cont_cond'])
+                     to_filt.loc[:,'error']=err
+                     #print(to_filt)
+                     #kde_data=pd.DataFrame({'error':err})
+                     kde_data=to_filt['error']
+                     filt_outl=(np.abs(stats.zscore(to_filt)) < 3).all(axis=1)
+                     kde_data=kde_data[filt_outl]
+                     tel=tel[filt_outl]
+                     #print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+                     #print(kde_data)
+                     #print('      [I] Values eliminated as outlayers in Zonotope Uncentrainty Bounding:')
+                     #if to_filt.shape[0]>150:
+                         #print(to_filt.head(150))
+                     #else:
+                         #print(to_filt.head(to_filt.shape[0]))
+                     train_stats = kde_data.describe()
+                     self.kde_stats[t] = train_stats.transpose()
+                     err=kde_data.values
+                     # here starts the iteration preparation
+                     epsilon=kde_data.abs().describe()['mean']/10
+                     epsilon_step=kde_data.abs().describe()['std']/50
+                     new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho,epsi=epsilon)
+                     ho_n=copy.deepcopy(ho)
+                     ho_record=[ho]
+                     ho_gradients=[]
+                     update_record=[]
+                     averages_record=[]
+                     lamda_record=[new_d['lamda'].max()]
+                     pp=0
+                     stop_count=0
+                     stop_overfit=0
+                     batch=100
+                     last_ratio=lmd_mean/new_d.describe()['lamda']['max']
+                     converged=False
+                     iterator=0
+                     counter=-1
+                     mov_avg=10
+                     slow_break=200
+                     ratio_evolution=[last_ratio]
+                     best_ratio=last_ratio
+                     best_lamda=new_d['lamda'].max()
+                     best_score=0
+                     while not converged:#new_d['lamda'].max()>2*lmd_mean:
+                        # work in smaller batches
+                        iterator=iterator+1
+                        print('ITERATION # '+str(iterator))
+                        b=0
+                        in_epoch=True
                         bingo=copy.deepcopy(new_d)
-                        bingo=bingo.drop(to_drop.index)
-                        lamda_record.append(new_d['lamda'].max())
-                        
-                        print(new_d.describe())
-                        if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00025:
-                            stop_count=stop_count+1
-                            #print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
-                            #print(' ------ Stability CONVERGENCE CLOSER ------')
-                            if len(ratio_evolution)>slow_break:
-                                if np.std(ratio_evolution[-slow_break:])<0.003:
-                                    converged=True
-                            if stop_count>10:
-                                converged=True
-                        else:
-                            stop_count=0
-                        last_ratio=lmd_mean/new_d.describe()['lamda']['max']
-                        ratio_evolution.append(last_ratio)            
-                        if counter>mov_avg:
-                            ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
-                            li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
-                            last_score=((ri/best_ratio)**2)*(best_lamda/li+0.5)
-                            #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
-                            if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.0:
-                                stop_overfit=stop_overfit+1
-                                #print(' ------ Overfitting CONVERGENCE CLOSER ------')
-                                #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                        to_drop=[]
+                        # make batch selection at random
+                        while b<new_d.shape[0] and in_epoch:
+                            counter=counter+1
+                            b=b+batch
+                            bat=batch
+                            if b>(new_d.shape[0]-1):
+                                bat=new_d.shape[0]-(b-100)-1
+                                b=new_d.shape[0]-1
+                                in_epoch=False
+                                to_drop=[]
+                            bat_set=bingo.sample(bat)
+                            ho_n,ho_gradients_n,update=self.update_ho(new_d,nors,projs,vals,lmd_mean,ho_n,epsilon,bat_set.index,alpha=0.00015)
+                            if len(to_drop)==0:
+                                to_drop=bat_set
                             else:
-                                stop_overfit=0
-                            if stop_overfit>10:
-                                converged=True
-                        if last_ratio>best_ratio:
-                            #best_score=last_score
-                            best_ratio=last_ratio
-                            best_lamda=new_d['lamda'].max()
-                            best_ho=ho_n
-               
-                 if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.1:  
-
-                     self.hos[t]=best_ho
-                     self.lamdas[t]=best_lamda
-                 else:
-                     self.hos[t]=ho_n
-                     self.lamdas[t]=new_d['lamda'].max()
-                 self.min_projection[t]=min(nors)
-                 self.epsilon[t]=epsilon
-                 print(' ---> [I] In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t))
-                 print('     Lamda: '+str(self.lamdas[t])+' | Best Ratio: '+str(best_ratio)+' | Last Ratio: '+str(last_ratio))
-             except:
-                 print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-                 print(data[t])
-                 traceback.print_exc()
+                                to_drop=to_drop.append(bat_set)
+                            #averages_record.append(averages)
+                            ho_gradients.append(ho_gradients_n)
+                            update_record.append(update)
+                            #print(' ---> Run #'+str(pp))
+                            #print(ho_n)
+                            #print(update)
+                            #print('------------------------------------------')
+                            ho_n=ho_n/sum(sum(abs(ho_n))) # normalized each iteration ?
+                            ho_record.append(ho_n)
+                            # this is quite ineficient?
+                            new_d,nors,projs,vals,lmd_mean,c=self.one_run(kde_data,tel,ho_n,epsi=epsilon)
+                            bingo=copy.deepcopy(new_d)
+                            bingo=bingo.drop(to_drop.index)
+                            lamda_record.append(new_d['lamda'].max())
+                            #print(new_d.describe())
+                            if abs(lmd_mean/new_d.describe()['lamda']['max']-last_ratio)<0.00025:
+                                stop_count=stop_count+1
+                                #print('  New Ratio: '+str(lmd_mean/new_d.describe()['lamda']['max']) + ' | Old ratio: '+str(last_ratio))
+                                #print(' ------ Stability CONVERGENCE CLOSER ------')
+                                if len(ratio_evolution)>slow_break:
+                                    if np.std(ratio_evolution[-slow_break:])<0.003:
+                                        converged=True
+                                if stop_count>10:
+                                    converged=True
+                            else:
+                                stop_count=0
+                            last_ratio=lmd_mean/new_d.describe()['lamda']['max']
+                            ratio_evolution.append(last_ratio)            
+                            if counter>mov_avg:
+                                ri=sum(ratio_evolution[counter-mov_avg:counter])/mov_avg
+                                li=sum(lamda_record[counter-mov_avg:counter])/mov_avg
+                                last_score=((ri/best_ratio)**2)*(best_lamda/li+0.5)
+                                #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                                if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.0:
+                                    stop_overfit=stop_overfit+1
+                                    #print(' ------ Overfitting CONVERGENCE CLOSER ------')
+                                    #print('   [I] Ri/Rmax: '+str(ri/best_ratio)+' | Lmax/Li: '+str(best_lamda/li) )
+                                else:
+                                    stop_overfit=0
+                                if stop_overfit>10:
+                                    converged=True
+                            if last_ratio>best_ratio:
+                                #best_score=last_score
+                                best_ratio=last_ratio
+                                best_lamda=new_d['lamda'].max()
+                                best_ho=ho_n
+                     if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.1:  
+                         self.hos[t]=best_ho
+                         self.lamdas[t]=best_lamda
+                     else:
+                         self.hos[t]=ho_n
+                         self.lamdas[t]=new_d['lamda'].max()
+                     self.min_projection[t]=min(nors)
+                     self.epsilon[t]=epsilon
+                     region_untrained=False
+                     print(' ---> [I] In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t))
+                     print('     Lamda: '+str(self.lamdas[t])+' | Best Ratio: '+str(best_ratio)+' | Last Ratio: '+str(last_ratio))
+                 except:
+                     print(' ---> [!] ERROR In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
+                     print(data[t])
+                     traceback.print_exc()
 
              
      # to use it in many places ...
@@ -943,8 +951,11 @@ class residual:
      def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option,conf_factor=0.025,samples=[300,50]):                      
 
          label_num=-1
+         
          for k in range(len(variable_set)):
-             print('-----> SAMPLE #'+str(k))
+
+             k=k+1
+             #print('-----> SAMPLE #'+str(k))
              sample=variable_set[k]
              t=group_set[k]
              telem=telem_set.iloc[k].values
@@ -963,8 +974,12 @@ class residual:
                  max_point=mp
                  #print(max_point)
                  integral=sum(Z)
-                 conf_width=sensor_acc*(self.lamdas[t]*np.linalg.norm(telem.dot(self.hos[t]),ord=1)+self.epsilon[t])
-                 print('   Conf_width: '+str(conf_width))
+                 nor=np.linalg.norm(telem.dot(self.hos[t]),ord=1)
+                 if nor<self.min_projection[t]:
+                     nor=self.min_projection[t]
+                 lim=self.lamdas[t]*nor+self.epsilon[t]
+                 conf_width=sensor_acc*lim
+                 #print('   Conf_width: '+str(conf_width)+' | epsilon='+str(self.epsilon[t])+' vs ')
                  if integral>0:
                      P=Z/integral
                      #second get the sensor accuracy area
@@ -991,7 +1006,7 @@ class residual:
                      integral_measure=sum(Z_m)#*width_measure/width_full
                      A_max=sum(Z_max)#*width_measure/width_full
                      #print('   Subset Integral probs: '+str(Z_m))
-                     print('   Subset Integral sample: '+str(integral_measure)+' | Subset Integral MAx: '+str(A_max))
+                     #print('   Subset Integral sample: '+str(integral_measure)+' | Subset Integral MAx: '+str(A_max))
                      acc=0
                      #97% confidence
                      for j in range((len(P)-1)):
@@ -1002,23 +1017,23 @@ class residual:
                          if acc<(1-conf_factor) and (acc+P[j+1])>(1-conf_factor):
                              nhigh=new_cut[j][0]
                              high[str(label_num+sample_n)]=nhigh
-                     print('   [err,high,low]: '+str([sample[0],nhigh,nlow]))
+                     #print('   [err,high,low]: '+str([sample[0],nhigh,nlow]))
                      errors[str(label_num+sample_n)]=sample[0]
                      if ((sample[0]>nlow) and (sample[0]<nhigh)):
                          alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
                          phi[str(label_num+sample_n)]=0
-                         print('   No activ, Confidence: '+str((1-integral_measure/A_max)))
+                         #print('   No activ, Confidence: '+str((1-integral_measure/A_max)))
                      else:
                          alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
                          phi[str(label_num+sample_n)]=(1)
-                         print('   Activ, Confidence: '+str((1-integral_measure/A_max)))
-             except RuntimeWarning:
+                         #print('   Activ, Confidence: '+str((1-integral_measure/A_max)))
+             except:
                  avoid.append(str(label_num+sample_n))
-                 print('  - Runtime Warning in Score!')
+                 print('  [E] Detected error in Bound generation')
      
      # this splits the evaluation in sets where option defines the type of boundary to be used
      def score(self,variables,telemetry,groups,dic_fill,plt_names,times,option='default',std=7):                   
- 
+
          m_y={}
          for t in self.regions:
              m_y[t]=[(self.kde_stats[t].loc["mean"]-std*self.kde_stats[t].loc["std"]),(self.kde_stats[t].loc["mean"]+std*self.kde_stats[t].loc["std"])]
@@ -1029,7 +1044,7 @@ class residual:
          alpha=manager.dict()
          phi=manager.dict()
          avoid=manager.list()
-         sensor_acc=0.025
+         sensor_acc=0.015
          sample_n=-1
          jobs = []
          proc=int(multiprocessing.cpu_count())
@@ -1126,7 +1141,7 @@ class residual:
 ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####   
 ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####  ####       
 class fault_detector:
-     def __init__(self,filename,mso_txt,host,machine,matrix,sensors,faults,sensors_lookup,sensor_eqs,filt_value,filt_parameter,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=5,preferent=[]):
+     def __init__(self,filename,mso_txt,host,machine,matrix,sensors,faults,sensors_lookup,sensor_eqs,filt_value,filt_parameter,filt_delay_cap,main_ca,max_ca_jump,cont_cond,out_var='W_OutTempUser',target_var='RegSetP',aggS=5,preferent=[],filter_stab=False):
          self.file_name=filename
          self.version=""
          self.msos_path=mso_txt                 # Path to the txt where the msos are defined indicating the variables numbers
@@ -1160,6 +1175,9 @@ class fault_detector:
          self.cont_cond=cont_cond
          self.device=machine
          self.fault_mso_sensitivity={}          # meant to keep the sensitivity of each mso to each fault according to the weights of the model in each region
+         self.out_var=out_var
+         self.target_var=target_var
+         self.filter_stab=filter_stab
          #self.ES_manager=elastic_manager(host,machine)                # Elastic search manager -->> DISABLED FOR THE DOCKER COMPOSE SERVICE
      def get_priors_even(self):
          priori = [] 
@@ -1261,8 +1279,8 @@ class fault_detector:
         return sorted_s[keep]
     
      # to filter when the machine is in a transitory state until equilibrium is reached
-     def filter_stability(self,samples,out_var,target,delta=1.0):
-        keep=np.abs(samples[out_var].values-target)>delta
+     def filter_stability(self,samples,target,delta=1.0):
+        keep=np.abs(samples[self.out_var].values-target)<delta
         return samples[keep]
     # LINKED TO PM_MANAGER CODE --> These filtering functions return a bool list that can be used easily by the pm_manager, being prepared ad hoc
     # we also want to locate the transitions in general so we will provide for a given sample (Dataframe) the bool list of values above limits
@@ -1430,7 +1448,7 @@ class fault_detector:
                              if self.sensor_eqs[self.sensors_lookup[i+1]] in self.models[mso].equations:
                                  sentivity_vars[self.faults[eq]].append(self.sensors[i+1])
              for f in sentivity_vars:
-                 coe=[]
+                 coe={}
                  for t in self.models[mso].regions:
                      tot=0
                      for v in sentivity_vars[f]:
@@ -1440,10 +1458,10 @@ class fault_detector:
                              # The target variable is weighted as if it has a coeff of 1
                              tot=tot+1
                      # compensate with +1 to the total weight
-                     coe.append(tot/(sum(abs(self.models[mso].model[t]['coeff']))+1))
+                     coe[t]=tot/(sum(abs(self.models[mso].model[t]['coeff']))+1)
                  sentivity[f]=coe
              # it is normalized along each region 
-             for t in self.models[mso].regions:
+             for t in self.models[mso].regions: # some regions might not be used due to too few samples
                  tot=0
                  for i in sentivity:
                      tot=tot+sentivity[i][t]     
@@ -1507,7 +1525,6 @@ class fault_detector:
              not_done=return_dic[self.get_dic_entry(mso)]['not_done']
              
      def train_residuals(self,folder,file,cont_cond,predictor='NN',outlayers='No',option2='PCA'):
-
          manager = multiprocessing.Manager()
          return_dic = manager.dict()
          jobs = []
