@@ -159,7 +159,6 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=1,option=[],e
         elif code_error==4:
             print(filt_db)
     if filt_db.shape[0]>5:
-
     # CHECK MISSING: is the next horizon among these two windows ... should we reevaluate (rewrite some samples in DB) everytime otherwise?
         times=filt_db['timestamp']
         try:
@@ -583,7 +582,7 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     stats=data.describe()
     if uncertainty==[]:
         for i in cont_cond:
-            a=(data[i].max()-data[i].min())/(75*stats.loc['std'][i])
+            a=(data[i].max()-data[i].min())/(70*stats.loc['std'][i])
             uncertainty.append(a)
     lat_var=[]
     for i in data.columns:
@@ -603,10 +602,15 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
             #samp=ind.pop(i)
             q=ws.iloc[i]
             filt_bool=np.array([True]*ws.shape[0])
+            t_a=datetime.datetime.now()
             for cc in range(len(cont_cond)):
                 l=q[cont_cond[cc]]-uncertainty[cc]
                 h=q[cont_cond[cc]]+uncertainty[cc]
                 filt_bool = filt_bool & np.array(ws[cont_cond[cc]]>l) & np.array(ws[cont_cond[cc]]<h)
+            t_b=datetime.datetime.now()
+            dif=t_b-t_a
+            #fault_manager.Load(folder,file)
+            #print('  [T] Time for filtering one sample out ---> '+str(dif))
             # with filt_bool we have extracted 
             filt_ws=ws[filt_bool]
             #ind=list(set(ind) - set(filt_ws.index))
@@ -711,6 +715,17 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
     # we return the    
     return final_samp
 
+def get_data_batch(body,time,shared_list):
+    try:
+        body['times']=[time]
+        r = requests.post('http://db_manager:5001/collect-data',json = body)
+        dd=r.json()
+        shared_list.append(pd.DataFrame(dd))
+    except:
+        print(' [E] A time band was not properly received: ')
+        print(time)
+    
+    
 def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True):
    
     file, folder = file_location(machine,version) 
@@ -742,56 +757,65 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         file_data='/models/file_data.csv'
         file_test='/models/file_test.csv'
         file_kde='/models/file_kde.csv'
+        file_full='/models/file_full.csv'
         no_files=False
         try:
             fault_manager.training_data=pd.read_csv(file_data,index_col=0)
             fault_manager.test_data=pd.read_csv(file_test,index_col=0)
             fault_manager.kde_data=pd.read_csv(file_kde,index_col=0)
+            fault_manager.full_train_data=pd.read_csv(file_full,index_col=0)
             if abs(sam-fault_manager.training_data.shape[0])>10:
                 no_files=True
         except:
             no_files=True
         #print(fault_manager.training_data)
         if no_files:
-if True:
+
             base_time=30 #minutes per request
-            if len(times_b)==1:
-                start=times_b[0][0]
-                end=times_b[0][1]
-                new_set=[]
-                go_on=True
-                from_t=start
-                until_t=''
-                i=0
-                while go_on:
-                    i=i+1
-                    next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
-                    next_t=next_t.isoformat()
-                    until_t=next_t[:(len(next_t)-3)]+'Z'
-                    new_set.append([from_t,until_t])
-                    from_t=until_t
-                    if until_t>=end:
-                        go_on=False
-                time_set=new_set
+            if len(times_b)<10:
+                time_set=[]
+                for tim in times_b:
+                    start=tim[0]
+                    end=tim[1]
+                    go_on=True
+                    from_t=start
+                    until_t=''
+                    i=0
+                    while go_on:
+                        i=i+1
+                        next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
+                        next_t=next_t.isoformat()
+                        until_t=next_t[:(len(next_t)-3)]+'Z'
+                        time_set.append([from_t,until_t])
+                        from_t=until_t
+                        if until_t>=end:
+                            go_on=False
+
             else:
                 time_set=times_b
 
             try:
-                #manager = multiprocessing.Manager()
-                #shared_list = manager.list()
-if True:
-                shared_list = []
+                body={'device':machine,'names':names,'times':[],'aggSeconds':aggSeconds}
                 #jobs = []
+                proc=int(multiprocessing.cpu_count())
+                manager = multiprocessing.Manager()
+                shared_list=manager.list()
+                sub_batch=[]
+                sub_si=0
                 for time in time_set:
-                    #p = multiprocessing.Process(target=collect_timeband, args=(time,machine,names,aggSeconds,shared_list))
-                    #p.start()
-                    #jobs.append(p)
-                #for proc in jobs:
-                    #proc.join()
-                    body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
-                    r = requests.post('http://db_manager:5001/collect-data',json = body)
-                    dd=r.json()
-                    shared_list.append(pd.DataFrame(dd))
+                    jobs = []
+                    if len(sub_batch)<(proc-1):
+                        sub_batch.append(time)
+                    else:
+                        sub_batch.append(time)
+                        for t in sub_batch:
+                            p = multiprocessing.Process(target=get_data_batch, args=(body,t,shared_list))
+                            p.start()
+                            jobs.append(p)
+                        for q in jobs:
+                            q.join()
+                        sub_batch=[]
+                        
                 first=True
                 for df in shared_list:
                     if first:
@@ -825,6 +849,7 @@ if True:
             target=filt_data.pop(target_var)
             if filter_stab:
                 filt_data=fault_manager.filter_stability(filt_data,target)
+            fault_manager.full_train_data=filt_data
             fault_manager.training_data=homo_sampling(filt_data,cont_cond,s=sam)
             common = filt_data.merge(fault_manager.training_data, on=["timestamp"])
             rest=filt_data[~filt_data.timestamp.isin(common.timestamp)]
@@ -833,6 +858,8 @@ if True:
             fault_manager.training_data.to_csv(file_data)
             fault_manager.test_data.to_csv(file_test)
             fault_manager.kde_data.to_csv(file_kde)
+            fault_manager.full_train_data.to_csv(file_full)
+            
             print('[I] Saved sampled and filtered data')
             print('[I] Filtered Training Data')
             print(fault_manager.training_data)
@@ -871,7 +898,7 @@ if True:
         print('[D] Right before training the residuals')
         response_dic=fault_manager.train_residuals(folder,file,cont_cond,predictor='NN',outlayers='No')
         fault_manager.get_weight_sensitivity()
-        print('[D] Right after training the residuals')
+        print('  [D] Right after training the residuals')
         print('  [I] Fault MSO Sensitivity:  ')
         print(fault_manager.fault_mso_sensitivity)
         t_b=datetime.datetime.now()
@@ -902,3 +929,119 @@ if True:
     else:
         response={'Model already exists':True}
     return response #json.dumps(response)
+
+def update_model(device,time_start,time_stop,version="",aggSeconds=1):
+    file, folder = file_location(device,version)
+    fault_manager=load_model(file, folder)
+    if version[-3:-1]!='_v':
+        version=version+'_v1'
+    else:
+        version=version[:-1]+str(int(version[-1])+1)
+    fault_manager.version=version
+    file, folder = file_location(device,version)
+    try:
+        os.mkdir(folder)
+    except:
+        print(' [I] Folder already exists for v: '+str(version))
+    names,times_b=fault_manager.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+    names.append(fault_manager.target_var)
+    ######## NOT LIKE THIS --> MUST BE CHANGED #############
+    if int(device)==71471 or int(device)==74124:
+        aggSeconds=1
+    ########################################################
+    base_time=30 #minutes per request
+    if len(times_b)==1:
+        start=times_b[0][0]
+        end=times_b[0][1]
+        new_set=[]
+        go_on=True
+        from_t=start
+        until_t=''
+        i=0
+        while go_on:
+            i=i+1
+            next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
+            next_t=next_t.isoformat()
+            until_t=next_t[:(len(next_t)-3)]+'Z'
+            new_set.append([from_t,until_t])
+            from_t=until_t
+            if until_t>=end:
+                go_on=False
+        time_set=new_set
+    else:
+        time_set=times_b
+
+    try:
+        body={'device':device,'names':names,'times':[],'aggSeconds':aggSeconds}
+        #jobs = []
+        proc=int(multiprocessing.cpu_count())
+        manager = multiprocessing.Manager()
+        shared_list=manager.list()
+        sub_batch=[]
+        sub_si=0
+        for time in time_set:
+            jobs = []
+            if len(sub_batch)<(proc-1):
+                sub_batch.append(time)
+            else:
+                sub_batch.append(time)
+                for t in sub_batch:
+                    p = multiprocessing.Process(target=get_data_batch, args=(body,t,shared_list))
+                    p.start()
+                    jobs.append(p)
+                for q in jobs:
+                    q.join()
+                sub_batch=[]
+        first=True
+        for df in shared_list:
+            if first:
+                data=df
+                first=False
+            else:
+                data=data.append(df,ignore_index=True)        
+    except requests.exceptions.RequestException as e:  # This is the correct syntax
+        print(' [E] Issue collecting data ')
+        raise SystemExit(e)
+    print('All Data Collected')
+    print(data)
+    # Filter Erratic rows --> ONLY for UC8 71471
+    if device==71471:
+        keep_1=data['EvapTempCirc1']<100
+        step_one=data[keep_1]
+        keep_2=step_one['SubCoolCir1']<100
+        filtered=copy.deepcopy(step_one[keep_2])
+        filtered.loc[:,'UnitStatus']=filtered.loc[:,'UnitStatus']*10
+    elif device==74124:
+        keep_1=data['EvapTempCirc1']<100
+        filtered=copy.deepcopy(data[keep_1])
+        filtered.loc[:,'UnitStatus']=filtered.loc[:,'UnitStatus']*10
+    #####
+    # Limit maximum number of samples to avoid excesive overfitting
+    #if filtered.shape[0]>sam:
+        #data_sampled=filtered.sample(n=sam)
+    #else:
+        #data_sampled=filtered
+    sam=int(fault_manager.training_data.shape[0]/10)
+    filt_data=fault_manager.filter_samples(filtered)
+    target=filt_data.pop(fault_manager.target_var)
+    if fault_manager.filter_stab:
+        filt_data=fault_manager.filter_stability(filt_data,target)
+    fault_manager.full_train_data=fault_manager.full_train_data.append(filt_data,ignore_index=True)   
+    fault_manager.training_data=fault_manager.training_data.append(homo_sampling(filt_data,fault_manager.cont_cond,s=sam),ignore_index=True)    
+    common = filt_data.merge(fault_manager.training_data, on=["timestamp"])
+    rest=filt_data[~filt_data.timestamp.isin(common.timestamp)]
+    fault_manager.test_data=fault_manager.test_data.append(rest.sample(n=int(sam/2)),ignore_index=True) 
+    fault_manager.kde_data=fault_manager.kde_data.append(homo_sampling(filt_data,fault_manager.cont_cond,s=int(sam/2)),ignore_index=True)  
+    t_a=datetime.datetime.now()
+    print('[D] Right before training the residuals')
+    response_dic=fault_manager.train_residuals(folder,file,fault_manager.cont_cond,predictor='NN',outlayers='No')
+    fault_manager.get_weight_sensitivity()
+    print('[D] Right after training the residuals')
+    print('  [I] Fault MSO Sensitivity:  ')
+    print(fault_manager.fault_mso_sensitivity)
+    t_b=datetime.datetime.now()
+    dif=t_b-t_a
+    fault_manager.Save(folder,file)
+    fault_manager.data_creation=datetime.datetime.now()
+    #fault_manager.Load(folder,file)
+    print('  [T] TOTAL residual training computing time ---> '+str(dif))

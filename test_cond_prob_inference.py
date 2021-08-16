@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Apr  8 08:52:47 2021
+Created on Tue Aug  3 14:25:48 2021
 
 @author: sega01
 """
+# test the joint distribution between activations - variables
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,6 +15,8 @@ from matplotlib.lines import Line2D
 
 from elasticsearch import Elasticsearch
 
+import seaborn as sns
+from matplotlib.colors import LogNorm
 
 def get_index_analytics(date, ty):
     index = ty+date[5:7]+date[0:4]
@@ -109,7 +113,72 @@ def get_analytics(client, time_start, time_stop, device, version, names_analysis
 
          return data
 
-
+def get_telemetry(client,time_start, time_stop, device, var):
+         ty='telemetry_'
+         ind=get_index_analytics(time_start,ty) 
+         response = client.search(
+            index=ind,
+            body={
+                  "query": {
+                    "bool": {
+                      # Also: filter, must_not, should
+                      "must": [ 
+                        {
+                          "match": {
+                            "deviceId": device
+                          }
+                        },
+                        {
+                          "match": {
+                            "aggregationSeconds": 1
+                          }
+                        },
+                        {
+                          "match": {
+                            # name of the variable from sensors
+                            "param": var 
+                          }
+                        },
+                        {
+                        "range": {
+                        # Timestap format= "2019-12-30T09:25:20.000Z"
+                        "timestamp": { 
+                        "gt": time_start, # Date Format in Fault Manager: '2019-05-02 08:00:10'
+                        "lt": time_stop 
+                                     }
+                                 }
+                        }
+                      ],
+                      "must_not": [],
+                      "should": []
+                    }
+                  },
+                  "from": 0,
+                  "size": 100,
+                  "sort": [{ "timestamp" : {"order" : "asc"}}],
+                  "aggs": {}
+                },
+            scroll='5m'
+         )
+         # DATA ARRANGE: each mso will have a dictionary with as many temporal series as in self.names_analysis --> all msos in the list data
+         data={}
+         for hit in response['hits']['hits']:
+             #print(hit)
+             data[hit['_source']['timestamp']]=hit['_source']['avg']
+            
+         sc_id=response['_scroll_id']
+         more=True
+         while more:
+             sc=client.scroll(scroll_id=sc_id,scroll='2m') # ,scroll='1m'
+             #sc_id=response['_scroll_id']
+             if len(sc['hits']['hits'])==0: #|| total>20
+                 more=False
+             else:
+                 for hit in sc['hits']['hits']:
+                     data[hit['_source']['timestamp']]=hit['_source']['avg']
+                     
+         return data
+     
 def fix_dict(d):
     new_d = {}
     for n in d:
@@ -144,8 +213,24 @@ else:
 #            ["2021-05-31T08:30:00.000Z","2021-06-01T12:00:00.000Z"],
 #            ["2021-06-01T12:00:00.000Z","2021-06-03T07:50:00.000Z"],
 #            ["2021-06-03T07:50:00.000Z","2021-06-03T11:40:00.000Z"]]
+sensors={"1":"ControlRegCompAC.VarFrequencyHzMSK","2":"EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed","3":"Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val","7":"WaterFlowMeter","8":"SuctSH_Circ1","9":"DscgTempCirc1","12":"EvapTempCirc1","13":"CondTempCirc1","16":"W_OutTempUser","17":"W_OutTempEvap","18":"W_InTempUser","20":"FiltPress","23":"PumpPress","24":"ExtTemp"}
+var_names=['ControlRegCompAC.VarFrequencyHzMSK',
+ 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed',
+ 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val',
+ 'WaterFlowMeter',
+ 'SuctSH_Circ1',
+ 'DscgTempCirc1',
+ 'EvapTempCirc1',
+ 'CondTempCirc1',
+ 'W_OutTempUser',
+ 'W_OutTempEvap',
+ 'W_InTempUser',
+ 'FiltPress',
+ 'PumpPress',
+ 'ExtTemp']
 
-dates_goal = [["2021-07-15T08:30:00.000Z","2021-07-19T08:30:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
+
+dates_goal = [["2021-06-23T12:30:00.000Z","2021-06-24T10:30:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
 names_analysis = ['models_error', 'low_bounds', 'high_bounds',
     'activations', 'confidence', 'group_prob', 'timestamp']
 host = '137.116.224.197:9200'
@@ -162,6 +247,18 @@ fault_signature_matrix = [[0, 1, 1, 1, 1, 1], [1, 0, 1, 1, 1, 1], [1, 0, 1, 1, 1
     0, 0, 0, 0, 0, 1], [0, 0, 0, 1, 0, 0], [1, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 1], [1, 1, 0, 1, 1, 1], [1, 1, 1, 1, 1, 0], [1, 0, 1, 1, 1, 0], [1, 0, 0, 1, 1, 1], [1, 0, 1, 0, 1, 1], [0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]
 priori = np.ones(len(faults))/len(faults)
 
+training_data_stats={'CondTempCirc1': {'count': 119999.0, 'mean': 35.40744006200052, 'std': 8.90832861902754, 'min': 21.7, '25%': 28.6, '50%': 33.5, '75%': 39.6, 'max': 61.9}, 'ControlRegCompAC.VarFrequencyHzMSK': {'count': 119999.0, 'mean': 117.20713672613937, 'std': 48.016148138679334, 'min': 0.0, '25%': 79.0, '50%': 114.6, '75%': 157.6, 'max': 200.0}, 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val': {'count': 119999.0, 'mean': 59.985982383186524, 'std': 25.939489172746487, 'min': 0.0, '25%': 41.3, '50%': 59.4, '75%': 80.0, 'max': 100.0}, 'DscgTempCirc1': {'count': 119999.0, 'mean': 64.29948166234719, 'std': 13.256771386645704, 'min': 39.7, '25%': 53.6, '50%': 62.3, '75%': 74.2, 'max': 101.3}, 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed': {'count': 119999.0, 'mean': 113.43869365578045, 'std': 17.538777345983736, 'min': 0.0, '25%': 107.3, '50%': 113.4, '75%': 120.6, 'max': 163.7}, 'EvapTempCirc1': {'count': 119999.0, 'mean': 6.837542812856774, 'std': 10.973930126348929, 'min': -18.6, '25%': -2.5, '50%': 8.8, '75%': 17.1, 'max': 27.0}, 'ExtTemp': {'count': 119999.0, 'mean': 27.026118550987924, 'std': 9.114370111131533, 'min': 17.4, '25%': 22.0, '50%': 22.9, '75%': 24.6, 'max': 53.2}, 'FiltPress': {'count': 119999.0, 'mean': 0.5030391919932666, 'std': 0.22608007119671195, 'min': 0.1, '25%': 0.3, '50%': 0.5, '75%': 0.7, 'max': 0.9}, 'PumpPress': {'count': 119999.0, 'mean': 4.333651113759282, 'std': 0.15663738666291355, 'min': 4.0, '25%': 4.2, '50%': 4.3, '75%': 4.5, 'max': 4.6}, 'SuctSH_Circ1': {'count': 119999.0, 'mean': 9.598460820506837, 'std': 5.357339488874387, 'min': 1.1, '25%': 6.3, '50%': 7.6, '75%': 9.9, 'max': 33.5}, 'UnitStatus': {'count': 119999.0, 'mean': 9.0, 'std': 0.0, 'min': 9.0, '25%': 9.0, '50%': 9.0, '75%': 9.0, 'max': 9.0}, 'W_InTempUser': {'count': 119999.0, 'mean': 17.239367828065234, 'std': 14.581572713808185, 'min': -10.6, '25%': 4.7, '50%': 17.1, '75%': 29.2, 'max': 51.7}, 'W_OutTempEvap': {'count': 119999.0, 'mean': 12.814576788139899, 'std': 13.394501890590526, 'min': -12.3, '25%': 1.3, '50%': 12.6, '75%': 24.1, 'max': 39.5}, 'W_OutTempUser': {'count': 119999.0, 'mean': 13.341140342836189, 'std': 13.105144081605985, 'min': -11.2, '25%': 2.3, '50%': 13.0, '75%': 24.2, 'max': 39.4}, 'WaterFlowMeter': {'count': 119999.0, 'mean': 46.13294277452312, 'std': 12.478756683077693, 'min': 21.1, '25%': 33.3, '50%': 47.3, '75%': 58.5, 'max': 69.0}}
+bins={}
+bin_size=50
+labels=[]
+for i in range(bin_size):
+    labels.append(i)
+for var in var_names:
+    bb=[training_data_stats[var]['min']-1000*training_data_stats[var]['std']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min'])]
+    for i in range(bin_size-1):
+        bb.append(training_data_stats[var]['min']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))
+    bb.append(training_data_stats[var]['min']+1000*training_data_stats[var]['std']+((i+1)/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))                 
+    bins[var]= bb
 if True:
     activations = []
     confidences = []
@@ -169,6 +266,7 @@ if True:
     high = []
     low = []
     groups = []
+    telemetry ={}
     for i in range(len(mso_set)):
         for d in range(len(data_iss)):
             if d == 0:
@@ -189,751 +287,157 @@ if True:
     times = data_iss[0][0]['timestamp']
     for d in data_iss[1:]:
         times = times+d[0]['timestamp']
+    first=True
+    for d in dates_goal:
+        if first:
+            first=False
+            for var in var_names:
+                client = Elasticsearch(hosts=[host])
+                elm=get_telemetry(client,d[0],d[1],device,var)
+                keep=pd.DataFrame(list(elm.keys())).isin(times)
+                telemetry[var]=pd.DataFrame(list(elm.values()))[keep.values]
 
-
-sams = len(activations[0])
-if False:
-    activations = []
-    start_1 = int(sams/3)
-    start_2 = int(2*sams/3)
+#create the joint tables
+joint={}
+for var in var_names:
+    joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':activations[0],'MSO_1':activations[1],'MSO_2':activations[2],'MSO_3':activations[3],'MSO_4':activations[4],'MSO_5':activations[5]})
+  
+# get the conditional probabilities for activations only (each var and each MSO)
+N_appear=joint[var_names[0]][var_names[0]].shape[0]
+joint_results={}
+for var in var_names:
+    joint_results[var]={}
+    N_appear=joint[var].shape[0]
     for i in range(len(mso_set)):
-        if i == 5:
-            victor_1 = np.zeros(start_1)
-            victor_2 = np.random.randint(4, size=sams-start_1)
-            victor_2 = np.where(victor_2 > 1, 1, victor_2)
-            activations.append(np.concatenate((victor_1, victor_2)))
-        elif i == 6:
-            victor_1 = np.zeros(start_2)
-            victor_2 = np.random.randint(2, size=sams-start_2)
-            activations.append(np.concatenate((victor_1, victor_2)))
-        else:
-            activations.append(np.zeros(sams))
-
-k_factor = 0.95
-
-up_lim_prior = 0.25
-option = 'GG'
-ma = 20
-record = []
-priori = []
-for j in range(len(faults)):
-    priori.append(1/len(faults))
-
-
-# Key Strokes
-sound = np.zeros((len(activations), len(activations[0])))
-key_strokes = -1*np.ones(len(activations))
-alpha = 0.005
-betha = alpha/18
-gamma_y = 0.5
-for i in range(1, len(activations[0])):
-    for j in range(len(activations)):
-        if activations[j][i] == 1:
-            key_strokes[j] = i
-            sound[j][i] = 1
-        else:
-            # Double Decay
-            if 1-sound[j][i-1] <= gamma_y:
-                sound[j][i] = sound[j][i-1]-alpha
+        name='MSO_'+str(i)
+        joint_results[var][name]={}
+        subset=joint[var].loc[joint[var][name]==1]
+        a = subset[var].unique()
+        for j in a:
+            if j==0:
+                interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+            elif j==len(labels):
+                interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
             else:
-                sound[j][i] = sound[j][i-1]-betha
-                if sound[j][i] < 0:
-                    sound[j][i] = 0
-
-if True:
-         if priori == []:
-             priori = priori
-         prior_evolution = []
-         for j in range(len(faults)):
-             prior_evolution.append([priori[j]])
-         for i in range(ma):
-             for j in range(len(faults)):
-                 prior_evolution[j].append(priori[j])
-         test_weights = []
-         f_keys = list(faults.keys())
-         keystrokes = np.zeros(len(mso_set))
-
-         for i in range(ma, len(activations[0])):
-            right_clusters = True
-            for l in range(len(mso_set)):
-                if len(groups[l][i]) != len(fault_mso_sensitivity[mso_set[l]][list(fault_mso_sensitivity[mso_set[l]].keys())[0]]):
-                    right_clusters = False
-            if right_clusters:
-                saves = {}
-                saves['prior_ma'] = []
-                ma_prior = []
-                for j in range(len(faults)):
-                    new_ma = sum(prior_evolution[j][i-ma:i])/ma
-                    if new_ma > up_lim_prior:
-                        ma_prior.append(up_lim_prior)
-                    else:
-                        ma_prior.append(new_ma)
-                total_ma = sum(ma_prior)
-                for j in range(len(faults)):
-                    ma_prior[j] = ma_prior[j]
-                saves['prior_ma'].append(ma_prior)
-
-                p_phi = []
-                fault = False
-                activ_sample = []
-                right_clusters = True
-                gr = []
-                for l in range(len(mso_set)):
-                    gr.append(groups[l][i].index(max(groups[l][i])))
-                    activ_sample.append(activations[l][i])
-                    if sound[l][i] > 0:
-                        fault = True
-                # print(' Activations: '+str(activ))
-                # if an anomally is detected ...
-
-                if fault:
-                    # first you get the probability of this marking for each fault
-                    fault_phi = {}
-                    for j in range(len(faults)):
-                        p_phi.append(0)
-                        zvf = 1
-                        tot = 0
-                        contr = []
-                        for l in range(len(mso_set)):
-                            contr.append(0)
-                            if ((fault_signature_matrix[j][l] == 0) and (sound[l][i] > gamma_y)):
-                                zvf = 0
-                            if fault_signature_matrix[j][l] == 1:
-                                tot = tot+1
-                                # convers=list(fault_mso_sensitivity[mso_set[l]][faults[f_keys[j]]].keys())
-                                contr[l] = sound[l][i]*confidences[l][i]*abs(
-                                    fault_mso_sensitivity[mso_set[l]][faults[f_keys[j]]][gr[l]])  # convers[gr[l]]
-                                # print(fault_mso_sensitivity[mso_set[l]][faults[f_keys[j]]][gr])
-                                p_phi[j] = p_phi[j]+sound[l][i]*confidences[l][i] * \
-                                    abs(fault_mso_sensitivity[mso_set[l]]
-                                        [faults[f_keys[j]]][gr[l]])
-
-                        fault_phi[faults[f_keys[j]]] = contr
-                        if sum(fault_signature_matrix[j]) > 0:
-                            if zvf == 1:
-                                p_phi[j] = p_phi[j]/tot
-                            elif tot > 0:
-                                p_phi[j] = p_phi[j]*0.5/tot
-                            # print([j,tot,p_phi[j]])
-                    # then you compute the posterior probabilities (being the new prior probabilities)
-                    saves['mso_contrib'] = fault_phi
-                    record.append(saves)
-                    try:
-                        base = 0
-                        for j in range(len(faults)):
-                            # we test to work without bayesian convergence
-                            base = base+ma_prior[j]*p_phi[j]
-                        to_weight = []
-                        for j in range(len(faults)):
-                            s = (p_phi[j]*ma_prior[j])/base
-                            to_weight.append(s)
-                        # We pass the information to the function to evaluate the probabilities using the FSSM (and maybe FSOM)
-                        to_activate = []
-                        for l in range(len(mso_set)):
-                            to_activate.append(activations[l][i])
-                        test_weights.append(to_weight)
-                        if option == 'SensitivityWeight':
-                            print('Miracle')
-                        else:
-                            s = []
-                            base = 0
-                            for j in range(len(faults)):
-                                # prior_evolution[j][i]
-                                s.append(
-                                    ((1-k_factor)*to_weight[j]+k_factor*ma_prior[j])/2)
-                                base = base+s[j]
-                            for j in range(len(faults)):
-                                prior_evolution[j].append(s[j]/base)
-                    except:
-                        # traceback.print_exc()
-                        print('  [!] Error preparing sample for Prior Evolution')
-                        fault = False
-
-                 # in case no anomally is detected get the prior probabilities close to the original
-                if fault == False:
-                     base = 0
-                     s = []
-                     for j in range(len(faults)):
-                         s.append(
-                             (k_factor*prior_evolution[j][-1]+(1-k_factor)*prior_evolution[j][0])/2)
-                         base = base+s[j]
-                     for j in range(len(faults)):
-                         prior_evolution[j].append(s[j]/base)
-
-
-for j in range(len(faults)):
-    prior_evolution[j] = prior_evolution[j][ma:]
-##############################################################################
-##############################################################################
-
-fault_names = list(faults.values())
-color = CM.rainbow(np.linspace(0, 1, (len(mso_set))))
-fig = plt.figure(figsize=(20.0, 15.0))
-custom_lines = []
-names = []
-for mso in range(len(mso_set)):
-    c = color[mso]
-    ax1 = fig.add_subplot(2, 3, mso+1)
-    ax1.plot(np.array(activations[mso]), color=color[0],
-             linewidth=2.5, alpha=0.8, label='Activations')
-    #ax1.plot(confidences[mso], color=color[1],linewidth=2.5, alpha=0.8, label='Confidences')
-    ax1.title.set_text('MSO #'+str(mso_set[mso])+' Analysis')
-    #ax1.legend()
-    # custom_lines.append(Line2D([0], [0], color=c, lw=4))
-plt.legend()
-plt.xlabel('Samples')
-plt.show()
-##############################################################################
-"""# Only using activations
-feasible_faults=np.zeros((len(fault_signature_matrix),len(activations[0])))
-fsm=np.matrix(fault_signature_matrix)
-for i in range(len(activations[0])):
-    active=[]
-    efs=np.arange(0,len(fault_signature_matrix))
-    for j in  range(len(activations)):
-        if activations[j][i]==1:
-            active.append(j)
-    if active!=[]:
-        for m in active:
-            keep=np.where(fsm[:,m]==1)[0]
-            efs=np.intersect1d(efs,keep)
-
-        for f in efs:
-            feasible_faults[f,i]=1
-
-
-# showw all the fault activations
-fig = plt.figure(figsize=(20.0, 15.0))
-# custom_lines.append(Line2D([0], [0], color=c, lw=4))
-for f in range(len(fault_names)):
-    ax1 = fig.add_subplot(5,4,f+1)
-    ax1.plot(feasible_faults[f,:],linewidth=1.0,
-             alpha=0.8,label='Fault '+fault_names[f])
-    ax1.legend()
-fig.suptitle("Results for Feasibility from Activations")
-plt.show()
-
-#########################################################################
-# Get all faults feasible when activation is making sound
-heard_faults=np.zeros((len(fault_signature_matrix),len(activations[0])))
-fsm=np.matrix(fault_signature_matrix)
-for i in range(len(activations[0])):
-    active=[]
-    efs=np.arange(0,len(fault_signature_matrix))
-    for j in  range(len(activations)):
-        if sound[j,i]>0.15:
-            active.append(j)
-
-    if active!=[]:
-        for m in active:
-            keep=np.where(fsm[:,m]==1)[0]
-            efs=np.intersect1d(efs,keep)
-
-        for f in efs:
-            heard_faults[f,i]=1
-
-# showw all the fault activations
-fig = plt.figure(figsize=(20.0, 15.0))
-# custom_lines.append(Line2D([0], [0], color=c, lw=4))
-for f in range(len(fault_names)):
-    ax1 = fig.add_subplot(5,4,f+1)
-    ax1.plot(heard_faults[f,:],linewidth=1.0,
-             alpha=0.8,label='Fault '+fault_names[f])
-    ax1.legend()
-fig.suptitle("Results for Feasibility from Sound")
-plt.show()
-
-#########################################################################
-# Using the weights to give more insight into fault feasibility
-sensitive_faults=np.zeros((len(fault_signature_matrix),len(activations[0])))
-fsm=np.matrix(fault_signature_matrix)
-for i in range(len(activations[0])):
-    active=[]
-    efs=np.arange(0,len(fault_signature_matrix))
-    for j in  range(len(activations)):
-        if sound[j,i]>0.15:
-            active.append(j)
-
-    if active!=[]:
-        for m in active:
-            keep=np.where(fsm[:,m]==1)[0]
-            efs=np.intersect1d(efs,keep)
-
-        for f in efs:
-            we=1
-            for m in active:
-                we=we*fault_mso_sensitivity
-            sensitive_faults[f,i]=1
-
-# showw all the fault activations
-fig = plt.figure(figsize=(20.0, 15.0))
-# custom_lines.append(Line2D([0], [0], color=c, lw=4))
-for f in range(len(fault_names)):
-    ax1 = fig.add_subplot(5,4,f+1)
-    ax1.plot(sensitive_faults[f,:],linewidth=1.0,
-             alpha=0.8,label='Fault '+fault_names[f])
-    ax1.legend()
-plt.show() """
-
-
-#########################################################################
-# new confidence measure test 
-samples=10000
-n_conf=[]
-dfs=[]
-for mso in range(len(mso_set)):
-    h=np.array(high[mso])
-    l=np.array(low[mso])
-    e=np.array(error[mso])
-    l_d=np.abs(l-e)
-    h_d=np.abs(h-e)
-    width=np.abs(h-l)/2
-    d_bound=[]
-    for i in range(len(l_d)):
-        d_bound.append(min(l_d[i],h_d[i]))
-    d_bound=np.array(d_bound)
-    n_conf.append((d_bound/width))
+                interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+            joint_results[var][name][interval]={}
+            joint_results[var][name][interval]['Legend_index']=j
+            joint_results[var][name][interval]['P_joint']=subset.loc[joint[var][var]==j].shape[0]/N_appear
+            joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
+            joint_results[var][name][interval]['P_cond']=joint_results[var][name][interval]['P_joint']/joint_results[var][name][interval]['P_var']
     
-    # make the moving avg
-    dfs.append(pd.DataFrame({'data':confidences[mso]}))
-    #df['z_data'] = (df['data'] - df.data.rolling(window=samples).mean()) / df.data.rolling(window=samples).std()
-    #df['zp_data'] = df['z_data'] - df['z_data'].shift(samples)
-
-fig = plt.figure(figsize=(20.0, 15.0))
-# custom_lines.append(Line2D([0], [0], color=c, lw=4))
-for f in range(len(n_conf)):
-    ax1 = fig.add_subplot(3,2,f+1)
-    #◙ax1.plot(dfs[f].data,linewidth=1.0,color='silver',alpha=0.8,label='MSO '+str(f))
-    ax1.plot(dfs[f].data.rolling(window=samples).mean(),linewidth=2.0,color='crimson',alpha=0.8,label='Rolling mean MSO '+str(f))
-    ax1.plot(dfs[f].data.rolling(window=samples).std(),linewidth=2.0,color='orange',alpha=0.8,label='Rolling STD MSO '+str(f))
-    ax1.legend()
-plt.show()
-#########################################################################
-
-if True:
-        """s = -1
-        end = np.floor(len(faults)/3)
-        color = iter(CM.rainbow(np.linspace(0, 1, (int(end)-int(s)))))
-        fig, ax = plt.subplots()
-        i = -1
-        custom_lines = []
-        names = []
-        for fault in faults:
-            i = i+1
-            if i > s and i <= end:
-                c = next(color)
-                custom_lines.append(Line2D([0], [0], color=c, lw=4))
-                names.append(faults[fault])
-                ax.plot(prior_evolution[i], c=c, linewidth=1.9, alpha=0.6)
-        plt.xlabel('Samples')
-        plt.ylabel('Fault probabilities')
-        plt.title("Fault Probability Evolution")
-        plt.legend(custom_lines, names)
-        plt.show()
-
-        s = np.floor(len(faults)/3)
-        end = np.floor(len(faults)*2/3)
-        color = iter(CM.rainbow(np.linspace(0, 1, (int(end)-int(s)))))
-        fig, ax = plt.subplots()
-        i = -1
-        custom_lines = []
-        names = []
-        for fault in faults:
-            i = i+1
-            if i > s and i <= end:
-                c = next(color)
-                custom_lines.append(Line2D([0], [0], color=c, lw=4))
-                names.append(faults[fault])
-                ax.plot(prior_evolution[i], c=c, linewidth=1.9, alpha=0.6)
-        plt.xlabel('Samples')
-        plt.ylabel('Fault probabilities')
-        plt.title("Fault Probability Evolution")
-        plt.legend(custom_lines, names)
-        plt.show()
-
-        s = np.floor(len(faults)*2/3)
-        end = len(faults)
-        color = iter(CM.rainbow(np.linspace(0, 1, (int(end)-int(s)))))
-        fig, ax = plt.subplots()
-        i = -1
-        custom_lines = []
-        names = []
-        for fault in faults:
-            i = i+1
-            if i > s and i <= end:
-                c = next(color)
-                custom_lines.append(Line2D([0], [0], color=c, lw=4))
-                names.append(faults[fault])
-                ax.plot(prior_evolution[i], c=c, linewidth=1.9, alpha=0.6)
-        plt.xlabel('Samples')
-        plt.ylabel('Fault probabilities')
-        plt.title("Fault Probability Evolution")
-        plt.legend(custom_lines, names)
-        plt.show()
-
-        # only activations
-        color = CM.rainbow(np.linspace(0, 1, (len(mso_set))))
-        fig, ax = plt.subplots()
-        custom_lines = []
-        names = []
-        for mso in range(len(mso_set)):
-            c = color[mso]
-            # custom_lines.append(Line2D([0], [0], color=c, lw=4))
-            names.append('MSO #'+str(mso_set[mso]))
-            ax.plot(activations[mso], color=c, linewidth=2.5,
-                    alpha=0.8, label='MSO #'+str(mso_set[mso]))
-        plt.xlabel('Samples')
-        plt.ylabel('Activation Pressure')
-        plt.title("MSO Activations")
-        plt.legend()  # custom_lines,names
-        plt.show()
-
-        # only sound from activation strokes
-        color = CM.rainbow(np.linspace(0, 1, (len(mso_set))))
-        fig, ax = plt.subplots()
-        custom_lines = []
-        names = []
-        for mso in range(len(mso_set)):
-            c = color[mso]
-            # custom_lines.append(Line2D([0], [0], color=c, lw=4))
-            names.append('MSO #'+str(mso_set[mso]))
-            # if mso_set[mso]==234:
-            ax.plot(sound[mso], color=color[mso], linewidth=2.5,
-                    alpha=0.8, label='Damped MSO #'+str(mso_set[mso]))
-                # ax.plot(activations[mso],color=c,linewidth=2.5,alpha=0.8,label='Raw Activations MSO #'+str(mso_set[mso]))
-        plt.xlabel('Samples')
-        plt.ylabel('Activation Pressure')
-        plt.title("MSO Activations")
-        plt.legend()  # custom_lines,names
-        plt.show()"""
-
-        # mix of activ,
-        color = ['grey', 'orange', 'r', 'r', 'b']
-        custom_lines = []
-        names = []
-        for mso in range(len(mso_set)):
-            fig = plt.figure(figsize=(15.0, 15.0))
-            # custom_lines.append(Line2D([0], [0], color=c, lw=4))
-            names.append('MSO #'+str(mso_set[mso]))
-            ax1 = fig.add_subplot(2, 1, 1)
-            ax1.plot(np.array(activations[mso])/10, color=color[0],
-                     linewidth=2.5, alpha=0.8, label='Activations')
-            ax1.plot(confidences[mso], color=color[1],
-                     linewidth=2.5, alpha=0.8, label='Confidences')
-            ax2 = fig.add_subplot(2, 1, 2)
-            ax2.plot(high[mso], color=color[2], linewidth=1.5,
-                     alpha=0.8, label='High Bounds')
-            ax2.plot(low[mso], color=color[3], linewidth=1.5,
-                     alpha=0.8, label='Low Bounds')
-            ax2.plot(error[mso], color=color[4],
-                     linewidth=1.5, alpha=0.8, label='Error')
-            plt.xlabel('Samples')
-            # plt.ylabel('Activation Pressure')
-            fig.suptitle('MSO #'+str(mso_set[mso]))
-            plt.legend()  # custom_lines,names
-            plt.show()
-            
-custom_plot_ppt = False
-if custom_plot_ppt:
-        mso = 1
-        colors = ['r', 'gold', 'orchid', 'limegreen',
-            'royalblue', 'chocolate']  # groups colours
-        fig, ax = plt.subplots()
-        # group ploting
-        gs = []
-        x = []
-        i = -1
-        g_old = groups[mso][0].index(max(groups[mso][0]))
-        for g in groups[mso]:
-            #g = 3
-            i = i+1
-            x.append(i)
-            g_new = g.index(max(g))
-            gs.append(g_new)
-            if g_new != g_old:
-                plt.axvline(x=i, color='grey', linestyle='--')
-            g_old = g_new
-        import matplotlib.transforms as mtransforms
-        trans = mtransforms.blended_transform_factory(
-            ax.transData, ax.transAxes)
-        for c in range(len(colors)):
-            ax.fill_between(x, -1, 1, where=np.array(gs) == c,
-                            facecolor=colors[c], alpha=0.3, label='Group #'+str(c))
-        ax.plot(error[mso], color=color[4],
-                linewidth=1.5, alpha=0.9, label='Error')
-        ax.plot(high[mso], color=color[2], linewidth=1.5,
-                alpha=0.8, label='High Bounds')
-        ax.plot(low[mso], color=color[3], linewidth=1.5,
-                alpha=0.8, label='Low Bounds')
-        plt.legend()
-        plt.show()
-
-        fault_line = []
-        v_lines = []
-        for f in dates_goal[1:]:
-            fault_line.append(f[0])
-        crossed = np.zeros(len(fault_line))
-        for i in range(len(times)):
-            for f in range(len(fault_line)):
-                if crossed[f] == 0 and times[i] > fault_line[f]:
-                    crossed[f] = 1
-                    v_lines.append(i)
-        fig = plt.figure(figsize=(15.0, 15.0))
-        # custom_lines.append(Line2D([0], [0], color=c, lw=4))
-        names.append('MSO #'+str(mso_set[mso]))
-        ax1 = fig.add_subplot(2, 1, 1)
-        ax1.plot(np.array(activations[mso])/10, color=color[0],
-                 linewidth=2.5, alpha=0.8, label='Activations')
-        ax1.plot(confidences[mso], color=color[1],
-                 linewidth=2.5, alpha=0.8, label='Confidences')
-        for v in v_lines:
-            ax1.axvline(x=v, color='k', linestyle='--')
-        ax2 = fig.add_subplot(2, 1, 2)
-        ax2.plot(high[mso], color=color[2], linewidth=2.5,
-                 alpha=0.8, label='High Bounds')
-        ax2.plot(low[mso], color=color[3], linewidth=2.5,
-                 alpha=0.8, label='Low Bounds')
-        ax2.plot(error[mso], color=color[4],
-                 linewidth=2.5, alpha=0.8, label='Error')
-        for v in v_lines:
-            ax2.axvline(x=v, color='k', linestyle='--')
-        plt.xlabel('Samples')
-        # plt.ylabel('Activation Pressure')
-        fig.suptitle('MSO #'+str(mso_set[mso]))
-        plt.legend()  # custom_lines,names
-        plt.show()
-
-if False:
-    # fault sensitivity bar plots
-    fig = plt.figure(figsize=(15.0, 20.0))
-    color = CM.rainbow(np.linspace(0, 1, (len(faults))))
-    fault_names = list(faults.values())
-    re = 3
-    for mso in range(len(mso_set)):
-        c = color[mso]
-        ax1 = fig.add_subplot(3, 2, mso+1)
-        bars = []
-        for f in fault_names:
-            if f in fault_mso_sensitivity[mso_set[mso]]:
-                bars.append(
-                    np.mean(list(fault_mso_sensitivity[mso_set[mso]][f].values())))
-            else:
-                bars.append(0)
-        ax1.bar(fault_names, bars)
-        ax1.title.set_text('MSO #'+str(mso_set[mso]))
-    fig.suptitle("MSO sensitivities model: "+v)
-    plt.show()
-
-    # SPLITTED BY GROUP activation ratios and error stats
-    # for mso in range(len(mso_set)):
-    plot_set = [1,2,3]
-    for mso in plot_set:
-        splited_activations = []
-        splited_highs = []
-        splited_errors = []
-        for i in range(len(groups[mso][0])):
-            splited_activations.append([0])
-            splited_highs.append([0])
-            splited_errors.append([0])
-        gr_seq = []
-        for i in range(len(groups[mso])):
-            g = groups[mso][i]
-            g_new = g.index(max(g))
-            gr_seq.append(g_new)
-            splited_activations[g_new].append(activations[mso][i])
-            splited_highs[g_new].append(high[mso][i])
-            splited_errors[g_new].append(error[mso][i])
-    
-        fig = plt.figure(figsize=(15.0, 20.0))
-        color = CM.rainbow(np.linspace(0, 1, (len(faults))))
-        reg_names = []
-        ax1 = fig.add_subplot(3, 2, 1)
-        ax2 = fig.add_subplot(3, 2, 2)
-        ax3 = fig.add_subplot(3, 2, 3)
-        ax4 = fig.add_subplot(3, 2, 4)
-        ax5 = fig.add_subplot(3, 2, 5)
-        ax6 = fig.add_subplot(3, 2, 6)
-        appearances = []
-        bars = []
-        hi_b = []
-        hi_b_std = []
-        er_b_m = []
-        er_b_std = []
-        unique = np.unique(gr_seq, return_counts=True)
-        for i in range(len(groups[mso][0])):
-            if i in unique[0]:
-                appearances.append(unique[1][np.where(unique[0]==i)[0][0]]/len(gr_seq))
-            else:
-                appearances.append(0)
-            reg_names.append('Region #'+str(i))
-            bars.append(np.mean(splited_activations[i]))
-            hi_b.append(np.mean(splited_highs[i]))
-            hi_b_std.append(np.std(splited_highs[i]))
-            er_b_m.append(np.mean(np.abs(splited_errors[i])))
-            er_b_std.append(np.std(np.abs(splited_errors[i])))
-    
-        ax1.bar(reg_names, appearances)
-        ax1.title.set_text('Appearances on sample set per region')
-        ax2.bar(reg_names, bars)
-        ax2.title.set_text('Activation rate per region')
-        ax3.bar(reg_names, hi_b)
-        ax3.title.set_text('Mean error bounds per region')
-        ax4.bar(reg_names, hi_b_std)
-        ax4.title.set_text('STD of error bounds per region')
-        ax5.bar(reg_names, er_b_m)
-        ax5.title.set_text('Mean error per region')
-        ax6.bar(reg_names, er_b_std)
-        ax6.title.set_text('STD of error per region')
-        fig.suptitle('MSO #'+str(mso)+' | '+str(dates_goal))
-        plt.show()
-    
-        # Activations and error stats
-    
-    fig = plt.figure(figsize=(15.0, 20.0))
-    color= CM.rainbow(np.linspace(0, 1, (len(faults))))
-    reg_names= []
-    ax1 = fig.add_subplot(3, 2, 1)
-    ax2 = fig.add_subplot(3, 2, 2)
-    ax3 = fig.add_subplot(3, 2, 3)
-    ax4 = fig.add_subplot(3, 2, 4)
-    ax5 = fig.add_subplot(3, 2, 5)
-    ax6 = fig.add_subplot(3, 2, 6)
-    bars= []
-    conf= []
-    hi_b= []
-    hi_b_std= []
-    er_b_m= []
-    er_b_std= []
-
-    for i in range(len(mso_set)):
-        reg_names.append('MSO #'+str(mso_set[i]))
-        conf.append(np.sum(confidences[i]))
-        bars.append(np.mean(activations[i]))
-        hi_b.append(np.mean(high[i]))
-        hi_b_std.append(np.std(high[i]))
-        er_b_m.append(np.mean(np.abs(error[i])))
-        er_b_std.append(np.std(np.abs(error[i])))
-
-    ax1.bar(reg_names, conf)
-    ax1.title.set_text('Total confidence per mso')
-    ax2.bar(reg_names, bars)
-    ax2.title.set_text('Activation rate per mso')
-    ax3.bar(reg_names, hi_b)
-    ax3.title.set_text('Mean error bounds per mso')
-    ax4.bar(reg_names, hi_b_std)
-    ax4.title.set_text('STD of error bounds per mso')
-    ax5.bar(reg_names, er_b_m)
-    ax5.title.set_text('Mean error per mso')
-    ax6.bar(reg_names, er_b_std)
-    ax6.title.set_text('STD of error per mso')
-    fig.suptitle('MSO #'+str(mso)+' | '+str(dates_goal))
-    plt.show()
-
-    # logo
-    fig, ax = plt.subplots()
-    # group ploting
-    gs= []
-    x= []
-    i= -1
-    x = np.arange(0.0, 0.5, 0.01)
-    y1 = np.sin(2 * np.pi * x)
-    y2 = y1*1.3333+0.1
-    y3 = -y2
-    ax.plot(y1, color='black', linewidth=2.5, alpha=0.9, label='Error')
-    ax.plot(y2, color='dimgray', linewidth=2.5, alpha=0.8, label='High Bounds')
-    ax.plot(y3, color='dimgray', linewidth=2.5, alpha=0.8, label='Low Bounds')
-
-    plt.show()
-    
-    # weight plots
-    models={10: {0:np.array([-0.14585502,  0.28840445, -0.50596419, -0.        ,  1.47124897,
-       -0.31539461, -0.        , -0.4021763 , -0.        , -0.40248732]), 1:np.array([ 0.        ,  0.56544443, -0.31345913,  0.        ,  1.22241301,
-        0.03839369, -0.03486291, -0.16099607, -0.        , -0.40869192]), 2:np.array([-0.0284747 ,  0.67921132, -0.19632986, -0.14503987,  1.90046081,
-        0.10419791, -0.41166889, -0.98673373, -0.        , -0.77758978]), 3:np.array([-0.22007835,  0.49851537, -0.50688677, -0.        ,  0.39515797,
-        0.00529534,  0.83181626, -0.22796915, -0.09310233, -0.24111602]), 4:np.array([-0.18685524,  0.20698124,  0.16937365,  0.1494983 ,  0.29790568,
-        0.14575138,  0.00587526, -1.83671714,  2.56217111,  0.        ])}, 16: {0:np.array([-0.08909241,  0.49864979, -1.33398649,  0.98773708,  0.25628891]), 1:np.array([ 0.0104226 ,  0.46826489, -1.12233322,  1.03030033,  0.11701229]), 2:np.array([-0.05620658,  0.33221606, -0.92819169,  1.19580549, -0.06580252])}, 30: {0:np.array([ 4.18300264e-02,  4.64100146e-01,  1.53997791e+00,  1.17997356e-03,
-       -1.88747578e-01, -3.26410514e-01, -5.06317982e-02, -9.35314652e-01,
-       -4.76921282e-01]), 1:np.array([ 5.86503626e-02,  6.30268182e-01,  1.06662502e+00,  1.11711586e-05,
-       -6.23514681e-03,  1.11995963e-01, -1.24396347e-02, -6.09698410e-01,
-       -1.45751179e-01]), 2:np.array([-0.15409634,  0.74684685,  2.00610019, -0.00775935, -0.08190322,
-        0.13155962, -0.49806532, -0.81954134, -1.21089999]), 3:np.array([-0.01975329,  0.66298549,  0.37014802, -0.03423761, -0.22194918,
-        0.02018833,  0.88096682, -0.20642541, -0.99320299]), 4:np.array([ 0.06131578,  0.110542  ,  0.33767414, -0.0062613 , -0.17457774,
-        0.19251598, -0.        ,  0.13045192,  0.92808654])}, 41: {0:np.array([-0.02146062, -2.15066999,  1.69962008, -0.02584839, -0.38414906,
-       -0.07047904, -0.04464799, -0.05071729,  1.10331374]), 1:np.array([-0.10229986, -1.97120691,  2.06945756, -0.20921391, -0.16530865,
-       -0.5311727 ,  0.        , -0.02945243,  0.86576164]), 2:np.array([-0.26378294, -2.67929417,  1.86358229,  0.2384339 , -0.23617137,
-       -0.24346431,  0.33671048, -0.07757832,  0.89041229]), 3:np.array([ 2.46444055e-01, -1.36252904e-01,  1.37331455e-01, -1.80194048e-01,
-        1.61060035e-01, -0.00000000e+00, -2.15349839e+00, -2.26414247e-03,
-        3.47353213e+00]), 4:np.array([ 0.07270608, -1.78631778,  0.37158761, -0.26959103, -0.01939024,
-        0.81244327,  0.47168643, -0.04083942,  0.6302276 ])}, 52: {0:np.array([-0.00948537, -0.31616322, -0.        , -0.00508562, -0.01389107,
-       -0.01472913,  0.42623431,  0.28733965,  0.51167645]), 1:np.array([-0.0608861 , -0.23410738,  0.        ,  0.10534305,  0.        ,
-        0.0050827 ,  0.82271467,  0.        ,  0.30243723]), 2:np.array([-0.005818  , -0.37203988,  0.04779289,  0.003274  ,  0.00238911,
-       -0.02179933,  0.27788066,  0.01538708,  0.89519552]), 3:np.array([-0.0617705 , -0.32146908,  0.00403371,  0.05670073,  0.00991804,
-        0.        ,  0.53332794,  0.        ,  0.63364207]), 4:np.array([-0.19867277, -0.21886999,  0.19034947,  0.16280799, -0.0395639 ,
-       -0.09273099,  0.3388016 , -0.        ,  0.4695443 ])}, 86: {0:np.array([ 0.35207866,  0.32001805, -0.        , -0.        , -0.2515597 ,
-        1.07046397, -1.02610938,  0.        ,  0.02680831]), 1:np.array([ 0.42302936,  0.50003207, -0.        ,  0.02467209,  0.24591047,
-        0.0965993 , -0.        , -0.        ,  0.04658736]), 2:np.array([ 0.30620012,  0.41838969, -0.43454402,  0.19246958,  0.11076437,
-        0.99574437, -0.61336361, -0.02631252,  0.0343774 ]), 3:np.array([ 0.1116841 ,  0.45479739, -0.51418926, -0.20929195, -0.02804951,
-        1.12357093, -0.40009055, -0.        ,  0.01232672]), 4:np.array([ 0.05285408,  0.32788011,  0.62503393, -0.11295866,  0.13749203,
-        0.17896521, -0.        ,  0.49768425,  0.06770292])}}
-    traductor={'CondTempCirc1':'CondT', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val':'EEV','DscgTempCirc1':'DechT', 
+# make matrices and plot heatmaps for each MSO
+traductor={'CondTempCirc1':'CondT', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val':'EEV','DscgTempCirc1':'DechT', 
                      'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed':'Ven','EvapTempCirc1':'EvapT', 'ExtTemp':'ExT', 
                      'FiltPress':'FP', 'ControlRegCompAC.VarFrequencyHzMSK':'Com','PumpPress':'PP', 'SubCoolCir1':'SbCoT', 
                      'SuctSH_Circ1':'SucTh', 'W_InTempUser':'Win','W_OutTempEvap':'Wev', 'W_OutTempUser':'Wout', 
                      'WaterFlowMeter':'Wfl'}
-    mso_variables={10: ['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'EvapTempCirc1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 16: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'EvapTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'], 30: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'PumpPress', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_InTempUser', 'W_OutTempUser'], 41: ['ControlRegCompAC.VarFrequencyHzMSK', 'EvapTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'WaterFlowMeter', 'W_OutTempUser'], 52: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 86: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'EvapTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_InTempUser', 'FiltPress']}
-    mso_outs={10: 'DscgTempCirc1', 16: 'DscgTempCirc1', 30: 'DscgTempCirc1', 41: 'DscgTempCirc1', 52: 'EvapTempCirc1', 86: 'DscgTempCirc1'}
-    fig = plt.figure(figsize=(15.0, 20.0))
-    colors = ['r', 'gold', 'orchid', 'limegreen','royalblue', 'chocolate','orange']
-    p=-1
-    for mso in mso_set:
-        # Weights per region
-        p=p+1
-        ax = fig.add_subplot(3, 2, p+1)
-        coefs={}
-        regions=list(models[mso].keys())
-        for j in regions:
-            coefs[j]=np.around(models[mso][j],decimals=2)
-        labels=[]
-        var_coef={}
-        i=-1
-        for n in mso_variables[mso]:
-            i=i+1
-            var_coef[n]=[]
-            for j in regions:
-                var_coef[n].append(coefs[j][i])
-            labels.append(traductor[n])
-    
-        x = np.arange(len(labels))  # the label locations
-        width = 0.8  # the width of the bars
-        
-        
-        rects={}
-        N=len(regions)
-        for j in regions:
-            pl=-N/2+(N-j-1)
-            rects[j] = ax.bar(x - pl*width/N, coefs[j], width/N, label='Region #'+str(j),color=colors[j])
-    
-        
-        # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('Weights')
-        ax.set_title('Weights by Region in MSO #'+str(mso)+' | Target: '+traductor[mso_outs[mso]])
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels)
-        ax.legend()
-        
-        
-        def autolabel(rects):
-            """Attach a text label above each bar in *rects*, displaying its height."""
-            for rect in rects:
-                height = rect.get_height()
-                ax.annotate('{}'.format(height),
-                            xy=(rect.get_x() + rect.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
-                            textcoords="offset points",
-                            ha='center', va='bottom')
-        
-        for j in regions:
-            autolabel(rects[j])
-    
-    #fig.tight_layout()
+root=r'V:\PL\Projects\Shared\LAUDA Cloud\LUC - Industrial PhD\Follow Up\Meetings\Figures MSO trace back Analysis\D_'+dates_goal[0][0][:13]
+y_labe=[]
+for var in var_names:
+    y_labe.append(traductor[var])
+# plot prob of each value in the timeframe selected
+matr=np.zeros([len(var_names),len(labels)])
+i=-1
+for var in var_names:
+    i=i+1
+    for j in labels:
+        matr[i,j]=np.round(joint[var].loc[joint[var][var]==j].shape[0]*100/N_appear,decimals=3)
+
+fig = plt.figure(figsize=(15.0, 15.0))
+sns.heatmap(matr,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+plt.title('Probability distribution of the different variables (%)')
+file=r"\Probabilities.png"
+#fig.savefig(root+file)
+plt.show()
+# plot cond for each mso
+for i in range(len(mso_set)):       
+    name='MSO_'+str(i)
+    matr=np.zeros([len(var_names),len(labels)])
+    i=-1
+    for var in var_names:
+        i=i+1
+        for j in labels:
+            if j==0:
+                interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+            elif j==len(labels):
+                interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+            else:
+                interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+            if interval in joint_results[var][name]:
+                matr[i,j]=np.round(joint_results[var][name][interval]['P_cond']*100,decimals=3)
+            else:
+                matr[i,j]=0
+    fig = plt.figure(figsize=(15.0, 15.0))
+    sns.heatmap(matr,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1,linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    plt.title(name+' Conditional Probability of Activations (%)')
+    file=r"\Conditional_Probability_"+name+".png"
+    #fig.savefig(root+file)
+    plt.show()
+                
+            
+# get the conditional probabilities for confidences only (each var and each MSO)  
+#create the joint tables
+joint={}
+for var in var_names:
+    joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':confidences[0],'MSO_1':confidences[1],'MSO_2':confidences[2],'MSO_3':confidences[3],'MSO_4':confidences[4],'MSO_5':confidences[5]})
+  
+# get the conditional probabilities for activations only (each var and each MSO)
+N_appear=joint[var_names[0]][var_names[0]].shape[0]
+joint_results={}
+for var in var_names:
+    joint_results[var]={}
+    N_appear=joint[var].shape[0]
+    for i in range(len(mso_set)):
+        name='MSO_'+str(i)
+        joint_results[var][name]={}
+        a = joint[var][var].unique()
+        for j in a:
+            if j==0:
+                interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+            elif j==len(labels):
+                interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+            else:
+                interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+            joint_results[var][name][interval]={}
+            joint_results[var][name][interval]['Legend_index']=j
+            
+            subset=joint[var].loc[joint[var][var]==j]
+            joint_results[var][name][interval]['C_mean']=subset[name].describe()['mean']
+            joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
+            joint_results[var][name][interval]['C_std']=subset[name].describe()['std']
+
+
+
+
+# plot confidence stats for each mso
+for i in range(len(mso_set)):       
+    name='MSO_'+str(i)
+    matr_mean=np.zeros([len(var_names),len(labels)])
+    matr_std=np.zeros([len(var_names),len(labels)])
+    i=-1
+    for var in var_names:
+        i=i+1
+        for j in labels:
+            if j==0:
+                interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+            elif j==len(labels):
+                interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+            else:
+                interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+            if interval in joint_results[var][name]:
+                matr_mean[i,j]=np.round(joint_results[var][name][interval]['C_mean'],decimals=3)
+                matr_std[i,j]=np.round(joint_results[var][name][interval]['C_std'],decimals=3)
+            else:
+                matr_mean[i,j]=0
+                matr_std[i,j]=0
+    fig = plt.figure(figsize=(15.0, 15.0))
+    ax1 = fig.add_subplot(2,1,1)
+    sns.heatmap(matr_mean,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(), linewidth=0.1,linecolor='silver')
+    ax1.title.set_text(name+' Confidence Mean')
+    ax1 = fig.add_subplot(2,1,2)
+    sns.heatmap(matr_std,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(), linewidth=0.1,linecolor='silver')
+    ax1.title.set_text(name+' Confidence STD')
+    file=r"\Confidence_"+name+".png"
+    #fig.savefig(root+file)
     plt.show()

@@ -372,7 +372,6 @@ class residual:
          for i in range(start_index, end_index):
              indices = range(i-history_size, i, step)
              data.append(dataset.loc[indices].values)
-        
              if single_step:
                  labels.append(target.loc[i+target_size].values)
              else:
@@ -404,7 +403,17 @@ class residual:
      # Function to launch the training of the model given a set of data and the variable to predict (aka objective as a string)
      # ignore_warnings(category=ConvergenceWarning)
      def train(self,data,validation,kde_data,source,objective,cont_cond,predictor='NN',option2='PCA',acceptance=2):  
-         self.cont_cond=cont_cond
+         self.cont_cond=[]
+         for c in cont_cond:
+             if (c in source) or (c==objective):
+                 self.cont_cond.append(c)
+         if self.cont_cond==[]:
+             names=source+[objective]
+             pac=PCA(n_components=1)
+             princ=pac.fit_transform(kde_data[names])
+             self.cont_cond=names[np.argmax(pac.components_[0])]
+             
+         #self.cont_cond=cont_cond
          text1="The MSO #"+str(self.mso_reduced_index)+" takes the variable "+objective+" as output"
          print(text1)
          text_source=""
@@ -422,12 +431,12 @@ class residual:
              #print('[!] No Filtering Parameter')
          # drop unused variables before starting 
 
-for name in list(data.columns):
+         for name in list(data.columns):
              if (name not in source) and (name!=objective) and (name not in self.kde_dims) and (name not in self.cont_cond):
                  data=data.drop([name],axis=1)
                  validation=validation.drop([name],axis=1)
                  kde_data=kde_data.drop([name],axis=1)
-if True:
+
          data = data.astype(float)
          validation=validation.astype(float)
          kde_data=kde_data.astype(float)
@@ -437,7 +446,7 @@ if True:
          #train_stats.pop(objective)
          train_stats = train_stats.transpose()
          self.train_stats=train_stats
-if True:
+
          train_labels = data[objective]
          test_labels = validation[objective]
          kde_labels = kde_data[objective]
@@ -495,7 +504,6 @@ if True:
          print('    [*] MSO'+str(self.mso_index)+' Clustering BGM ---> '+str(dif))
          ###################################################################
          #print(self.bgm.weights_)
-if True:
          test_groups=self.bgm.predict(normed_test_data[self.cont_cond].values)
          train_data_groups={}
          test_data_groups={}
@@ -510,7 +518,6 @@ if True:
          new_model_set={}
          error=[]
          for t in self.regions: 
-if True:
              new_model={}
              X_train = train_data_groups[t][source]
              y_train = train_data_groups[t][objective]
@@ -559,12 +566,10 @@ if True:
                      tole=tole*5
          self.model=new_model_set
          # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-if True:
          kde_groups=self.bgm.predict(normed_kde[self.cont_cond].values)
          kde_feed={}
          # we prepare a dic of arrays with the errors pertinent to each model
          for t in self.regions:
-if True:
              locats=np.where(kde_groups == t)[0]
              data_grouped=normed_kde.iloc[locats]
              kde_tr=data_grouped[source]
@@ -597,12 +602,13 @@ if True:
          return_d['original']=original
          return_d['train_dataset_index']=data.index
          return_d['not_done']=not_done
+         return_d['kde_feed']=kde_feed
          return return_d
+     
      # UNCERTAINTY !!    
      # Functions to search for the best possible Ho
      def one_run(self,kde_data,tel,ho,epsi=0.0):
         try:
-if True:
             trial=[]
             inds=[]
             nors=[]
@@ -623,7 +629,6 @@ if True:
             # Set lower cap to the norm1 result of the projections
             nors=np.array(nors)
             mu=np.percentile(nors,15)
-if True:
             condition=nors<mu
             nors[condition]=mu
             for i in range(kde_data.shape[0]): 
@@ -734,7 +739,7 @@ if True:
      #      https://towardsdatascience.com/a-hitchhikers-guide-to-mixture-density-networks-76b435826cca
      # KDE implementations comparison
      #      https://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
-     def model_uncertainty(self,data,option='default'):        
+     def model_uncertainty(self,data,option='default',region_set=[]):        
          self.hos={}
          self.lamdas={}
          self.epsilon={}
@@ -742,9 +747,10 @@ if True:
          self.kde={}
          self.min_projection={}
          # NOW THE KDE IS OVER THE DATA WITHOUT NORMALIZATION --> STATS ARE STILL USEFUL
-         for t in self.regions:
+         if region_set==[]:
+             region_set=self.regions
+         for t in region_set:
              print(' ---> In MSO #'+str(self.mso_reduced_index)+' | Region #'+str(t) )
-if True:
              region_untrained=True
              while region_untrained:
                  try:
@@ -946,7 +952,35 @@ if True:
          probs=self.gaussian(error_set,lim/2)
          return probs
      
-     
+     # obtain the number of activations in the full training set to retrain specific regions
+     def validate_model(self,full_data,threshold=0.05):
+         errors,groups,probs_bgm=self.predict(full_data)
+         bound={}
+         err_set={}
+         normed_predict_data=self.get_prediction_input(full_data)
+         source_telemetry=normed_predict_data[self.source]
+         for t in self.regions:
+             bound[t]=[]
+             err_set[t]=[]
+         for i in range(len(errors)):
+             telem=source_telemetry.iloc[i]
+             group=groups[i]
+             nor=np.linalg.norm(telem.dot(self.hos[group]),ord=1)
+             if nor<self.min_projection[group]:
+                 nor=self.min_projection[group]
+             bound[group].append(self.lamdas[group]*nor+self.epsilon[group])
+             err_set[group].append(errors[i])    
+         actives={}
+         accept=[]
+         rejected_regions=[]
+         for t in self.regions:
+             actives[t]=np.where(np.abs(bound[t])<np.abs(err_set[t]),1,0)
+             print(str(sum(actives[t])/len(actives[t])))
+             if sum(actives[t])/len(actives[t])>threshold:
+                 accept.append(t)
+
+         return accept
+         
      # prepared to compute limits when the uncertainty is given in probabilistic form   
      def sample_score(self,variable_set,telem_set,group_set,m_y,sensor_acc,sample_n,plt_names,low,high,errors,alpha,phi,avoid,option,conf_factor=0.025,samples=[300,50]):                      
 
@@ -1003,8 +1037,8 @@ if True:
                      else:
                          Z_m=np.exp(self.kde[t].score_samples(new_measure))
                          Z_max=np.exp(self.kde[t].score_samples(new_max))
-                     integral_measure=sum(Z_m)#*width_measure/width_full
-                     A_max=sum(Z_max)#*width_measure/width_full
+                     #integral_measure=sum(Z_m)#*width_measure/width_full
+                     #A_max=sum(Z_max)#*width_measure/width_full
                      #print('   Subset Integral probs: '+str(Z_m))
                      #print('   Subset Integral sample: '+str(integral_measure)+' | Subset Integral MAx: '+str(A_max))
                      acc=0
@@ -1019,13 +1053,14 @@ if True:
                              high[str(label_num+sample_n)]=nhigh
                      #print('   [err,high,low]: '+str([sample[0],nhigh,nlow]))
                      errors[str(label_num+sample_n)]=sample[0]
+                     width=np.abs(nhigh-nlow)/2
                      if ((sample[0]>nlow) and (sample[0]<nhigh)):
-                         alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
+                         alpha[str(label_num+sample_n)]=1-min([abs(sample[0]-nlow),abs(sample[0]-nhigh)])/width#(1-integral_measure/A_max)
                          phi[str(label_num+sample_n)]=0
                          #print('   No activ, Confidence: '+str((1-integral_measure/A_max)))
                      else:
-                         alpha[str(label_num+sample_n)]=(1-integral_measure/A_max)
-                         phi[str(label_num+sample_n)]=(1)
+                         alpha[str(label_num+sample_n)]=1.1#(1-integral_measure/A_max)
+                         phi[str(label_num+sample_n)]=1
                          #print('   Activ, Confidence: '+str((1-integral_measure/A_max)))
              except:
                  avoid.append(str(label_num+sample_n))
@@ -1499,7 +1534,60 @@ class fault_detector:
          return best_target
 
              
-     def train_mso(self,mso,predictor,option2,folder,return_dic,cont_cond):
+     def train_mso(self,mso,folder,return_dic,cont_cond):
+         print('[D] Inside paralel process to train mso'+str(mso))
+         not_done=True
+         variables=self.models[mso].known
+         names=self.get_sensor_names(variables)
+         i=-1
+         target=self.get_target(names)
+         goal=target
+         names.remove(target)
+         source=names
+         while not_done:
+             n=self.models[mso].mso_index
+             o=self.models[mso].mso_reduced_index
+             known=self.models[mso].known
+             variables=self.models[mso].variables
+             faults=self.models[mso].faults
+             equations=self.models[mso].equations
+             to_train=residual(n,o,known,variables,faults,equations,self.sensors,cont_cond)
+             print('[D] Inside train mso function for mso #'+str(mso))
+             return_dic[self.get_dic_entry(mso)]=to_train.train(self.training_data,self.test_data,self.kde_data,source,goal,cont_cond)
+             #to_train.save(folder,mso)
+             not_done=return_dic[self.get_dic_entry(mso)]['not_done']
+         not_checked=True
+         while not_checked:
+             re_do=to_train.validate_model(self.full_train_data)
+             print(' [I] Model Validation Process ')
+             if re_do==[]:
+                 not_checked=False
+                 print(' [I] All clear ')
+             else:
+                 to_train.model_uncertainty(return_dic[self.get_dic_entry(mso)]['kde_feed'],region_set=re_do)
+                 print(' [I] Regions Zonotope Retrained: '+str(re_do))      
+         to_train.save(folder,mso)      
+         self.models[mso].load(folder,mso)
+         self.models[mso]=to_train
+             
+     def train_residuals(self,folder,file,cont_cond,predictor='NN',outlayers='No',option2='PCA'):
+         manager = multiprocessing.Manager()
+         return_dic = manager.dict()
+         jobs = []
+         print('[D] Inside train residual function')
+         for mso in self.mso_set: 
+             print('[D] About to start mso'+str(mso))
+             p = multiprocessing.Process(target=self.train_mso, args=(mso,folder,return_dic,cont_cond))
+             p.start()
+             jobs.append(p)
+         for proc in jobs:
+             proc.join()
+         for mso in self.mso_set:
+             self.models[mso].load(folder,mso)
+         self.Save(folder,file)
+         return return_dic
+     
+     def re_train_mso(self,mso,predictor,option2,folder,return_dic,cont_cond):
          print('[D] Inside paralel process to train mso'+str(mso))
          not_done=True
          variables=self.models[mso].known
@@ -1523,23 +1611,6 @@ class fault_detector:
              self.models[mso].load(folder,mso)
              self.models[mso]=to_train
              not_done=return_dic[self.get_dic_entry(mso)]['not_done']
-             
-     def train_residuals(self,folder,file,cont_cond,predictor='NN',outlayers='No',option2='PCA'):
-         manager = multiprocessing.Manager()
-         return_dic = manager.dict()
-         jobs = []
-         print('[D] Inside train residual function')
-         for mso in self.mso_set: 
-             print('[D] About to start mso'+str(mso))
-             p = multiprocessing.Process(target=self.train_mso, args=(mso,predictor,option2,folder,return_dic,cont_cond))
-             p.start()
-             jobs.append(p)
-         for proc in jobs:
-             proc.join()
-         for mso in self.mso_set:
-             self.models[mso].load(folder,mso)
-         self.Save(folder,file)
-         return return_dic
             
         # This option would check all the dates to make sure that they do not provide outlayers or a faulty behaviour
         #if outlayers=='Yes':

@@ -10,7 +10,7 @@ def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-from classes.pm_manager import get_analysis,set_new_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data
+from classes.pm_manager import get_analysis,set_new_model,update_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data
 import pandas as pd
 import requests
 import time
@@ -18,6 +18,7 @@ import datetime
 import pickle
 import traceback
 from streamlit import caching
+import multiprocessing 
 #warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
 #from config import Config
@@ -53,6 +54,10 @@ def build_model(data):
     max_ca_jump=data['transition_trigger_low_bounds']
     cont_cond=data['contour_conditions']
     version=data['version']
+    filter_stab=True
+    if data['filter_stab']==0:
+        print('   --> OPTION: No Filter Stability')
+        filter_stab=False
     #spec_list=data['spec_list']
     if 'mso_set' in data:
         mso_set=data['mso_set']
@@ -63,7 +68,7 @@ def build_model(data):
     else:
         preferent=[]
     print(data)
-    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set)
+    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set,filter_stab=filter_stab)
     
 # PRIORITY CRITERIA: Forecast and Probabilities ahead of Analysis (TO BE IMPLEMENTED)
 def get_task(file):
@@ -99,17 +104,15 @@ def upload_results(documents,task_type):
         print(error_dic[task_type])
         traceback.print_exc()
 
-def cycle():
+def cycle(task):
+    print(task)
     file='/models/tasks.csv'
     n_model='/models/new_model.pkl'
     #print('--> Start of cycle')
     r=True
-    task=get_task(file)
-    #
     options=['Zonotope']
     extra_names=['']
     if task!='No task available':
-        print(task)
         try:
             t_a=datetime.datetime.now()
             if task['type']=='analysis':
@@ -144,9 +147,14 @@ def cycle():
                     else:
                         r=False
                         print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
-                
+            elif task['type']=='update_model':
+                print('Task taken to update the unit '+str(task['device']))
+                v=task['version']
+                update_model(task['device'],task['time_start'],task['time_stop'],version=task['version'])
+                print('The retrain is completed for unit '+str(task['device']))  
+                    
             elif task['type']=='build_model':
-if True:
+
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
                 filehandler = open(n_model, 'rb') 
                 data = pickle.load(filehandler)
@@ -191,7 +199,7 @@ if True:
             table.to_csv(file)
         except:
             print('Error updating status ...')
-                
+            
 
 # For the test phase the data will be given completly for the sligtly modified version of FM_ES
 '''@app.route('/new-model', methods=['POST'])
@@ -218,7 +226,28 @@ def new_model():
 if __name__ == '__main__':
     # LOAD MODELS IN DICTIONARY
     #app.run(port=5002,threaded=True)
+    file='/models/tasks.csv'
+    paralels=4  
     while True:
-        time.sleep(1)
-        cycle()
+         room=True
+         inem=False
+         i=-1
+         jobs = []
+         print(' [S] Launch of PM processing')
+         while room and i<paralels:
+             i=i+1
+             task=get_task(file)
+             if task!='No task available':
+                 p = multiprocessing.Process(target=cycle, args=([task]))
+                 p.start()
+                 jobs.append(p)
+                 inem=True
+                 time.sleep(2)
+             else:
+                 time.sleep(20)
+                 room=False
+         if inem:
+            for proc in jobs:
+                proc.join()
+
 

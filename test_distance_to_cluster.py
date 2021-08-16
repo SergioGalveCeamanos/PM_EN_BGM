@@ -112,7 +112,7 @@ def norm(x,train_stats):
 host='137.116.224.197:9200'
 client=Elasticsearch(hosts=[host])
 device=74124
-d=["2021-05-26T10:30:00.000Z","2021-05-27T10:00:00.000Z"]
+d=["2021-05-27T20:30:00.000Z","2021-05-29T23:00:00.000Z"]
 residuals=[10, 16, 30, 41, 52, 86]  
 variables=["WaterFlowMeter","ExtTemp","W_InTempUser","ControlRegCompAC.VarFrequencyHzMSK"]
 versions=['_test_VI_StabilityFilt_090621','_test_I_Redo_100621','_test_II_Redo_100621']
@@ -232,12 +232,14 @@ normed_cc=norm(df, training_stats['_test_VI_StabilityFilt_090621'][10])
 #df.to_csv('telemetry_cont_cond_hot.csv')
 clusts={}
 v='_test_II_Redo_100621'
+versions=['_test_II_Redo_100621']
 groups=[]
 for m in residuals:
     clusts[m]=MiniBatchKMeans(n_clusters=len(cluster_centers[v][m]))
     clusts[m].cluster_centers_=cluster_centers[v][m]
     groups.append(clusts[m].predict(normed_cc.values))
- 
+    
+""" 
 for v in versions:
     colors=['crimson','gold','orchid','limegreen','royalblue','chocolate','slategray','purple']
     fig = plt.figure(figsize=(30.0, 20.0))
@@ -254,7 +256,7 @@ for v in versions:
         ax1.legend()
     fig.suptitle("Distances for each MSO in vers "+v+' | High Temp data')
     #fig.savefig('HOT_distances_by_Cluster_'+v+'.png')
-    plt.show()
+    plt.show()"""
     
 for v in versions:
     colors=['crimson','gold','orchid','limegreen','royalblue','chocolate','slategray','purple']
