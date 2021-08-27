@@ -77,6 +77,22 @@ def collect_configuration():
     d=em.get_configuration(times,version)
     return jsonify(d) #jsonify(response)
 
+@app.route('/collect-reports', methods=['POST'])
+def collect_reports():
+    print("INFO from collect-data: request.")
+    #try:
+    print("TEST with request.get_json()")
+    print(request)
+    data = request.get_json()
+    print(data)
+    device = data['device']
+    version = data['trained_version']
+    times = ["1945-08-06T08:15:00.000Z",data['times']]
+    em.device=device
+    # we should get the config closest to the given time
+    d=em.get_reports(times,version)
+    return jsonify(d) #jsonify(response)
+
 @app.route('/collect-last-priors', methods=['POST'])
 def collect_last_priors():
     print("INFO from collect-last-prior: request.")

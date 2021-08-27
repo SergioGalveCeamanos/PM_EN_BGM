@@ -511,9 +511,14 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
         if mso_helth<selection:
             selection=mso_helth
             mso_selected=mso
-    # we use a exponential function to make the health indicator more reactive the more active samples we have, the 0.8 base is set to have a smooth value
-    # 1.1202902496016716 makes that when we have 0 activations health goes to 100 
-    helth=100*(1-(0.8**selection))*1.1202902496016716
+    # sigmoidal (+ sqrt to smooth) curve to make the first bits of health hard to loose and the ending ones easier 
+    # tuned so --> 30% activations <> 90% health | 40% activations <> 81% health | 60% activations <> 58% health | 100% activations <> 16% health
+    x=np.linspace(-1,10,num=50)
+    k=0.7
+    x0=5
+    helth=np.sqrt(1 / (1 + np.exp(-k*(x-x0))))
+    plt.plot(x,helth)
+    helth=100*(1-(0.9**selection))*1.53534
     
     #B. Most Critical Timebands
     # we will find the peaks in the most relevant mso for health --> The decision is made by using the moving average of the confidence of each mso (weighted by his ratio of activations)
@@ -570,12 +575,261 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
     report={'timestamp':times[-1],'health':helth,'critical_time':interest_time,'fault_interpretation':fault_result,'device':str(analysis[0]['device']),'trained_version':version}
     return report
 
+# generate analysis over given data for conditional analysis
+def conditional_analysis(fm,telemetry,activations,confidence):
+    training_data_stats=fm.train
+    bins={}
+    bin_size=50
+    labels=[]
+    for i in range(bin_size):
+        labels.append(i)
+    for var in var_names:
+        bb=[training_data_stats[var]['min']-1000*training_data_stats[var]['std']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min'])]
+        for i in range(bin_size-1):
+            bb.append(training_data_stats[var]['min']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))
+        bb.append(training_data_stats[var]['min']+1000*training_data_stats[var]['std']+((i+1)/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))                 
+        bins[var]= bb
+    joint={}
+    for var in var_names:
+        joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':activations[0],'MSO_1':activations[1],'MSO_2':activations[2],'MSO_3':activations[3],'MSO_4':activations[4],'MSO_5':activations[5]})
+      
+    # get the conditional probabilities for activations only (each var and each MSO)
+    N_appear=joint[var_names[0]][var_names[0]].shape[0]
+    joint_results={}
+    for var in var_names:
+        joint_results[var]={}
+        N_appear=joint[var].shape[0]
+        for i in range(len(mso_set)):
+            name='MSO_'+str(i)
+            joint_results[var][name]={}
+            subset=joint[var].loc[joint[var][name]==1]
+            joint_results[var][name]['Total_MSO_activ']=subset.shape[0]
+            a = subset[var].unique()
+            for j in a:
+                if j==0:
+                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+                elif j==len(labels):
+                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+                else:
+                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+                joint_results[var][name][interval]={}
+                joint_results[var][name][interval]['Legend_index']=j
+                joint_results[var][name][interval]['Activations_%']=subset.loc[joint[var][var]==j].shape[0]*100/joint_results[var][name]['Total_MSO_activ']
+                joint_results[var][name][interval]['P_joint']=subset.loc[joint[var][var]==j].shape[0]/N_appear
+                joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
+                joint_results[var][name][interval]['P_cond']=joint_results[var][name][interval]['P_joint']/joint_results[var][name][interval]['P_var']
+        
+    # make matrices and plot heatmaps for each MSO
+    y_labe=[]
+    for var in var_names:
+        y_labe.append(traductor[var])
+    # plot prob of each value in the timeframe selected
+    matr_prbs=np.zeros([len(var_names),len(labels)])
+    i=-1
+    for var in var_names:
+        i=i+1
+        for j in labels:
+            matr_prbs[i,j]=np.round(joint[var].loc[joint[var][var]==j].shape[0]*100/N_appear,decimals=3)
+    
+    # plot cond for each mso
+    cond_activ={}
+    for i in range(len(mso_set)):       
+        name='MSO_'+str(i)
+        matr=np.zeros([len(var_names),len(labels)])
+        i=-1
+        for var in var_names:
+            i=i+1
+            for j in labels:
+                if j==0:
+                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+                elif j==len(labels):
+                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+                else:
+                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+                if interval in joint_results[var][name]:
+                    matr[i,j]=np.round(joint_results[var][name][interval]['P_cond']*100,decimals=3)
+                else:
+                    matr[i,j]=0
+    
+    # get the conditional probabilities for confidences only (each var and each MSO)  
+    #create the joint tables
+    joint={}
+    for var in var_names:
+        joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':confidences[0],'MSO_1':confidences[1],'MSO_2':confidences[2],'MSO_3':confidences[3],'MSO_4':confidences[4],'MSO_5':confidences[5]})
+      
+    # get the conditional probabilities for activations only (each var and each MSO)
+    N_appear=joint[var_names[0]][var_names[0]].shape[0]
+    joint_results={}
+    for var in var_names:
+        joint_results[var]={}
+        N_appear=joint[var].shape[0]
+        for i in range(len(mso_set)):
+            name='MSO_'+str(i)
+            joint_results[var][name]={}
+            a = joint[var][var].unique()
+            for j in a:
+                if j==0:
+                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+                elif j==len(labels):
+                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+                else:
+                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+                joint_results[var][name][interval]={}
+                joint_results[var][name][interval]['Legend_index']=j
+                
+                subset=joint[var].loc[joint[var][var]==j]
+                joint_results[var][name][interval]['C_mean']=subset[name].describe()['mean']
+                joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
+                joint_results[var][name][interval]['C_std']=subset[name].describe()['std']
+    
+    for i in range(len(mso_set)):       
+        name='MSO_'+str(i)
+        matr_mean=np.zeros([len(var_names),len(labels)])
+        matr_std=np.zeros([len(var_names),len(labels)])
+        i=-1
+        for var in var_names:
+            i=i+1
+            for j in labels:
+                if j==0:
+                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
+                elif j==len(labels):
+                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
+                else:
+                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
+                if interval in joint_results[var][name]:
+                    matr_mean[i,j]=np.round(joint_results[var][name][interval]['C_mean'],decimals=3)
+                    matr_std[i,j]=np.round(joint_results[var][name][interval]['C_std'],decimals=3)
+                else:
+                    matr_mean[i,j]=0
+                    matr_std[i,j]=0
+    return 
+
+# Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
+def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,10,20]):
+    file, folder = file_location(device,version)
+    fm=load_model(file, folder)
+    #get initial date
+    next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
+    next_t=next_t.isoformat()
+    time_start=next_t[:(len(next_t)-3)]+'Z'
+    names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+    names.append(fm.target_var)
+    ######## NOT LIKE THIS --> MUST BE CHANGED #############
+    if int(device)==71471 or int(device)==74124:
+        aggSeconds=1
+    ########################################################
+    body={'device':str(device),'times':times_b,'aggSeconds':aggSeconds}
+    #headers = {'Content-Type': 'application/json'}
+    try:
+        # headers=headers
+        print(' HTTP message Body: ')
+        print(body)
+        r = requests.post('http://db_manager:5001/collect-reports',json = body) # 'http://db_manager:5001/collect-data'
+        data=r.json()
+    except:  # This is the correct syntax
+        print(' [!] Error gathering Telemetry')
+    
+    # check if the reports are to be concern a generate a notification analysis
+    for i in data:
+        health.append(r[i][0]['health'])
+        labels.append(r[i][0]['timestamp'])
+    to_plot={}
+    for m in ma:
+        to_plot[m]=[]
+    line_c=0
+    for i in range(max(ma),len(health)):
+        for m in ma:
+            to_plot[m].append(sum(health[i-m:i])/m)
+    slopes={}
+    ratio_slope={}
+    ratio_minmean={}
+    points=[]
+    to_notify=False
+    for m in ma:
+        slopes[m]=np.array(to_plot[m][1:])-np.array(to_plot[m][:-1])
+        ratio_slope[m]=np.abs(np.mean(slopes[m])/np.max(np.abs(slopes[m])))
+        ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
+        points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
+    
+    # collect data
+    if np.mean(points)>60:
+        print(' [I] Healthy resolution with evaluations: '+str(points))
+    else:
+        #generate time stamps for the whole period in slots of 30 min
+        base_time=30 #minutes per request
+        time_set=[]
+        for tim in times_b:
+            start=tim[0]
+            end=tim[1]
+            go_on=True
+            from_t=start
+            until_t=''
+            i=0
+            while go_on:
+                i=i+1
+                next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
+                next_t=next_t.isoformat()
+                until_t=next_t[:(len(next_t)-3)]+'Z'
+                time_set.append([from_t,until_t])
+                from_t=until_t
+                if until_t>=end:
+                    go_on=False
+        #download the data
+        #Telemetry
+        try:
+            body={'device':machine,'names':names,'times':[],'aggSeconds':aggSeconds}
+            #jobs = []
+            proc=int(multiprocessing.cpu_count())
+            manager = multiprocessing.Manager()
+            shared_list=manager.list()
+            sub_batch=[]
+            sub_si=0
+            for time in time_set:
+                jobs = []
+                if len(sub_batch)<(proc-1):
+                    sub_batch.append(time)
+                else:
+                    sub_batch.append(time)
+                    for t in sub_batch:
+                        p = multiprocessing.Process(target=get_data_batch, args=(body,t,shared_list))
+                        p.start()
+                        jobs.append(p)
+                    for q in jobs:
+                        q.join()
+                    sub_batch=[]
+                    
+            first=True
+            for df in shared_list:
+                if first:
+                    data=df
+                    first=False
+                else:
+                    data=data.append(df,ignore_index=True)        
+        except requests.exceptions.RequestException as e:  # This is the correct syntax
+            raise SystemExit(e)
+        print('All Data Collected')
+        print(data)
+        names=['activations','confidence','timestamp','group_prob']
+        body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time],'group_prob':1}
+        try:
+            r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
+            # here data will be a list of dicts, in each one all the fields separated by mso
+            all_data=r.json()
+        except requests.exceptions.RequestException as e:  # This is the correct syntax
+            traceback.print_exc()
+            raise SystemExit(e)
+    
+        activations=[]
+        confidences=[]
+        for i in range(len(fm.mso_set)):
+            activations.append(all_data[i][names[0]])
+            confidences.append(all_data[i][names[1]])
+        
 def collect_timeband(time,machine,names,aggSeconds,shared_list):
     body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
     r = requests.post('http://db_manager:5001/collect-data',json = body) # 'http://db_manager:5001/collect-data'
     dd=r.json()
     shared_list.append(pd.DataFrame(dd))
-
 
 # this class will return a subset of size s where the samples are evenly distributed to include maximum diversity 
 def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):

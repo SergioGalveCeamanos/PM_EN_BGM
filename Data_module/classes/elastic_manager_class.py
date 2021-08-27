@@ -484,8 +484,74 @@ class elastic_manager:
          priors=[]
          for i in faults:
              priors.append(got_it[faults[i]])
-        
+         
          return priors
      
+        
+     def get_reports(self,times,faults,version,length=200):
+         ty='rep_'
+         ind=self.get_index_analytics(times[1],ty) 
+         response = self.client.search(
+            index=ind,
+            body={
+                  "query": {
+                    "bool": {
+                      # Also: filter, must_not, should
+                      "must": [ 
+                        {
+                          "match": {
+                            "device": self.device
+                          }
+                        },
+                        {
+                              "match": {
+                                "trained_version": version
+                              }
+                        },
+                        {
+                        "range": {
+                        # Timestap format= "2019-12-30T09:25:20.000Z"
+                        "timestamp": { 
+                        "gt": times[0], # Date Format in Fault Manager: '2019-05-02 08:00:10'
+                        "lt": times[1] 
+                                     }
+                                 }
+                        }
+                      ],
+    
+                      "must_not": [],
+                      "should": []
+                  }
+                },
+                  "from": 0,
+                  "size": length,
+                  "sort": [{ "timestamp" : {"order" : "asc"}}],
+                  "aggs": {}
+                },
+            scroll='5m'
+         )
+    
+         data={}
+         for hit in response['hits']['hits']:
+             if hit['_source']['timestamp'] not in data:
+                 data[hit['_source']['timestamp']]=[hit['_source']]
+             else:
+                 data[hit['_source']['timestamp']].append(hit['_source'])
+        
+         sc_id=response['_scroll_id']
+         more=True
+         while more:
+             sc=self.client.scroll(scroll_id=sc_id,scroll='2m') # ,scroll='1m'
+             #sc_id=response['_scroll_id']
+             if len(sc['hits']['hits'])==0: #|| total>20
+                 more=False
+             else:
+                 for hit in sc['hits']['hits']:
+                     if hit['_source']['timestamp'] not in data:
+                         data[hit['_source']['timestamp']]=[hit['_source']]
+                     else:
+                         data[hit['_source']['timestamp']].append(hit['_source'])
+                    
+         return data
  
          
