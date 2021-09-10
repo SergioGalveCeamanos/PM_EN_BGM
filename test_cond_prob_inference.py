@@ -231,7 +231,7 @@ var_names=['ControlRegCompAC.VarFrequencyHzMSK',
  'ExtTemp']
 
 
-dates_goal = [["2021-07-08T12:00:00.000Z","2021-07-10T09:00:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
+dates_goal = [["2021-05-25T13:00:00.000Z","2021-05-26T09:00:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
 names_analysis = ['models_error', 'low_bounds', 'high_bounds',
     'activations', 'confidence', 'group_prob', 'timestamp']
 host = '137.116.224.197:9200'
@@ -361,9 +361,12 @@ file=r"\Probabilities.png"
 plt.show()
 # plot cond for each mso
 mtr_condactiv_fault={}
+mtr_perc_activ={}
+fig = plt.figure(figsize=(15.0, 15.0))
 for n in range(len(mso_set)):       
     name='MSO_'+str(n)
     matr=np.zeros([len(var_names),len(labels)])
+    mtr_perc_activ[name]=np.zeros([len(var_names),len(labels)])
     i=-1
     for var in var_names:
         i=i+1
@@ -375,16 +378,19 @@ for n in range(len(mso_set)):
             else:
                 interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
             if interval in joint_results[var][name]:
+                
                 matr[i,j]=np.round(joint_results[var][name][interval]['P_cond']*100,decimals=3)
+                mtr_perc_activ[name][i,j]=joint_results[var][name][interval]['Activations_%']
             else:
                 matr[i,j]=0
     mtr_condactiv_fault[name]=matr
-    fig = plt.figure(figsize=(15.0, 15.0))
+    ax1 = fig.add_subplot(3,2,n+1)
     sns.heatmap(matr,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1,linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
-    plt.title(name+' Conditional Probability of Activations (%)')
+    plt.title(name)
     file=r"\Conditional_Probability_"+name+".png"
     #fig.savefig(root+file)
-    plt.show()
+fig.suptitle(' Conditional Probability of Activations (%)')
+plt.show()
                 
             
 # get the conditional probabilities for confidences only (each var and each MSO)  
@@ -420,6 +426,7 @@ for var in var_names:
 
 mtr_mean_fault={}
 mtr_std_fault={}
+fig = plt.figure(figsize=(15.0, 15.0))
 for n in range(len(mso_set)):       
     name='MSO_'+str(n)
     matr_mean=np.zeros([len(var_names),len(labels)])
@@ -444,20 +451,21 @@ for n in range(len(mso_set)):
     mtr_std_fault[name]=matr_std
         
     
-    fig = plt.figure(figsize=(15.0, 15.0))
-    ax1 = fig.add_subplot(2,1,1)
+    
+    ax1 = fig.add_subplot(3,2,n+1)
     sns.heatmap(matr_mean,cmap=sns.color_palette("light:b", as_cmap=True),annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
-    ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(2,1,2)
-    sns.heatmap(matr_std,cmap=sns.color_palette("light:b", as_cmap=True),annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
-    ax1.title.set_text(name+' Confidence STD')
+    ax1.title.set_text(name)
+    #ax1 = fig.add_subplot(2,1,2)
+    #sns.heatmap(matr_std,cmap=sns.color_palette("light:b", as_cmap=True),annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
+    #ax1.title.set_text(name+' Confidence STD')
     #ax1 = fig.add_subplot(3,1,3)
     #sns.heatmap(matr_cl,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
     #ax1.title.set_text(name+' Confidence Clustering (K-Means)')
-    file=r"\Confidence_Clust_"+name+".png"
+    #file=r"\Confidence_Clust_"+name+".png"
     #fig.savefig(root+file)
-    plt.show()
- 
+
+fig.suptitle('Mean Confidence')
+plt.show()
     ################       Comparison and identification        #################
 def get_cond_activ_mtrs(joint_results,mso_set,labels,var_names,bins):
     mtr_condactiv={}
@@ -514,7 +522,7 @@ def moving_average_variables(matr,matr_prb,var_names,wind_ratio=0.20):
     key_intervals={}
     best_array=[]
     for i in range(matr.shape[0]):
-        best=0
+        best=-1
         pos=0
         wind=int(np.where(matr_prbs[i]>0)[0].shape[0]*wind_ratio)
         if wind%2==0:
@@ -551,24 +559,26 @@ filehandler.close()
 mtr_condactiv_train=get_cond_activ_mtrs(cond_train_joint_res,mso_set,labels,var_names,bins)
 mtr_mean_train,mtr_std_train=get_mean_std_mtrs(means_train_joint_res,mso_set,labels,var_names,bins)
 
-
-for n in range(len(mso_set)):
-    name='MSO_'+str(n)
+if False:
     fig = plt.figure(figsize=(15.0, 15.0))
-    ax1 = fig.add_subplot(3,1,1)
-    sns.heatmap(mtr_condactiv_train[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
-    #ax1.title.set_text(name+' Conditional prob of Activations')
-    ax1 = fig.add_subplot(3,1,2)
-    sns.heatmap(mtr_mean_train[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence Mean'))
-    #ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(3,1,3)
-    sns.heatmap(mtr_std_train[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence STD'))
-    #ax1.title.set_text(name+' Confidence STD')
-    #ax1 = fig.add_subplot(3,1,3)
-    #sns.heatmap(matr_cl,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
-    #ax1.title.set_text(name+' Confidence Clustering (K-Means)')
-    #file=r"\Confidence_Clust_"+name+".png"
-    #fig.savefig(root+file)
+    for n in range(len(mso_set)):
+        name='MSO_'+str(n)
+        
+        ax1 = fig.add_subplot(3,2,n+1)
+        #sns.heatmap(mtr_condactiv_fault[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
+        #ax1.title.set_text(name)
+        #ax1 = fig.add_subplot(3,2,2)
+        sns.heatmap(corrected_cond[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver')#,cbar_kws = dict(label='Confidence Mean')
+        ax1.title.set_text(name)
+        #ax1 = fig.add_subplot(3,2,3)
+        #sns.heatmap(mtr_std_train[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence STD'))
+        #ax1.title.set_text(name+' Confidence STD')
+        #ax1 = fig.add_subplot(3,1,3)
+        #sns.heatmap(matr_cl,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe, linewidth=0.1,linecolor='silver')
+        #ax1.title.set_text(name+' Confidence Clustering (K-Means)')
+        #file=r"\Confidence_Clust_"+name+".png"
+        #fig.savefig(root+file)
+    fig.suptitle("Corrected Conditional Prob.")
     plt.show()
     
 # 1) correct baseline -- When we have a high ratio of the prob in training vs test we want to push the baseline value since it might be an artifact 
@@ -587,28 +597,31 @@ for n in range(len(mso_set)):
     name='MSO_'+str(n)
     corrected_cond[name]=np.round(np.clip(mtr_condactiv_fault[name]-R*mtr_condactiv_train[name],0.0,None),decimals=3)
     corrected_mean[name]=np.round(np.clip(mtr_mean_fault[name]-R*mtr_mean_train[name],0.0,None),decimals=3)
-    corrected_std[name]=np.round(np.clip(mtr_std_fault[name]-R*mtr_std_fault[name]/3,0.0,None),decimals=3)
+    corrected_std[name]=np.round(np.nan_to_num(np.clip(mtr_std_fault[name]/(R+mtr_std_train[name]),0.0,None)),decimals=3)
 for n in range(len(mso_set)):
     name='MSO_'+str(n)
-    fig = plt.figure(figsize=(15.0, 15.0))
-    ax1 = fig.add_subplot(3,2,1)
-    sns.heatmap(mtr_condactiv_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
-    #ax1.title.set_text(name+' Conditional prob of Activations')
-    ax1 = fig.add_subplot(3,2,3)
-    sns.heatmap(mtr_mean_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence Mean'))
-    #ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(3,2,5)
-    sns.heatmap(mtr_std_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence STD'))
-    ax1 = fig.add_subplot(3,2,2)
-    sns.heatmap(corrected_cond[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
-    #ax1.title.set_text(name+' Conditional prob of Activations')
-    ax1 = fig.add_subplot(3,2,4)
-    sns.heatmap(corrected_mean[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Confidence Mean'))
-    #ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(3,2,6)
-    sns.heatmap(corrected_std[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Confidence STD'))
-    fig.suptitle("Comparison of Raw vs Baseline Adjustment "+name)
-    plt.show()
+    try:
+        fig = plt.figure(figsize=(15.0, 15.0))
+        ax1 = fig.add_subplot(3,2,1)
+        sns.heatmap(mtr_condactiv_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
+        #ax1.title.set_text(name+' Conditional prob of Activations')
+        ax1 = fig.add_subplot(3,2,3)
+        sns.heatmap(mtr_mean_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence Mean'))
+        #ax1.title.set_text(name+' Confidence Mean')
+        ax1 = fig.add_subplot(3,2,5)
+        sns.heatmap(mtr_std_fault[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Confidence STD'))
+        ax1 = fig.add_subplot(3,2,2)
+        sns.heatmap(corrected_cond[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
+        #ax1.title.set_text(name+' Conditional prob of Activations')
+        ax1 = fig.add_subplot(3,2,4)
+        sns.heatmap(corrected_mean[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Confidence Mean'))
+        #ax1.title.set_text(name+' Confidence Mean')
+        ax1 = fig.add_subplot(3,2,6)
+        sns.heatmap(corrected_std[name],cmap='Spectral',annot=False,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Adapted Confidence STD'))
+        fig.suptitle("Comparison of Raw vs Baseline Adjustment "+name)
+        plt.show()
+    except:
+        print('Error in printing:  '+name)
     
 # 2) Identify relevant parts 
 # at mso level, start by getting the ratios Pcond 
@@ -624,20 +637,25 @@ for n in range(len(mso_set)):
 
 for n in range(len(mso_set)):
     name='MSO_'+str(n)
-    fig = plt.figure(figsize=(15.0, 15.0))
-    ax1 = fig.add_subplot(3,1,1)
-    sns.heatmap(ratio_cond[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
-    #ax1.title.set_text(name+' Conditional prob of Activations')
-    ax1 = fig.add_subplot(3,1,2)
-    sns.heatmap(ratio_mean[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence Mean'))
-    #ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(3,1,3)
-    sns.heatmap(ratio_std[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence STD'))
-    plt.show()
+    try:
+        fig = plt.figure(figsize=(15.0, 15.0))
+        ax1 = fig.add_subplot(3,1,1)
+        sns.heatmap(ratio_cond[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
+        #ax1.title.set_text(name+' Conditional prob of Activations')
+        ax1 = fig.add_subplot(3,1,2)
+        sns.heatmap(ratio_mean[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence Mean'))
+        #ax1.title.set_text(name+' Confidence Mean')
+        ax1 = fig.add_subplot(3,1,3)
+        sns.heatmap(ratio_std[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence STD'))
+        plt.show()
+    except:
+        print('Error printing')
 
-# find the points with best aggregation in each variable
+# 3) find the points with best aggregation in each variable
 results_selection_activ={}
 results_selection_mean={}
+best_arrays_activ={}
+best_arrays_mean={}
 template_print=[]
 for i in range(ratio_cond[name].shape[0]):
     template_print.append([])
@@ -645,12 +663,13 @@ for i in range(ratio_cond[name].shape[0]):
         template_print[i].append(' ')
 template_print=np.array(template_print)
 
+fig = plt.figure(figsize=(15.0, 15.0))
 for n in range(len(mso_set)):
     name='MSO_'+str(n)
     template_activ=copy.deepcopy(template_print)
     template_mean=copy.deepcopy(template_print)
-    results_selection_activ[name],best_array=moving_average_variables(ratio_cond[name],matr_prbs,var_names,wind_ratio=0.20)
-    results_selection_mean[name],best_array=moving_average_variables(ratio_mean[name],matr_prbs,var_names,wind_ratio=0.20)
+    results_selection_activ[name],best_arrays_activ[name]=moving_average_variables(ratio_cond[name],matr_prbs,var_names,wind_ratio=0.20)
+    results_selection_mean[name],best_arrays_mean[name]=moving_average_variables(ratio_mean[name],matr_prbs,var_names,wind_ratio=0.20)
     i=-1
     for var in var_names:
         i=i+1
@@ -658,15 +677,127 @@ for n in range(len(mso_set)):
             half=int((results_selection_activ[name][var]['window']-1)/2)
             template_activ[i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]='*'
             template_mean[i,results_selection_mean[name][var]['position']-half:results_selection_mean[name][var]['position']+half+1]='*'
-    fig = plt.figure(figsize=(15.0, 15.0))
-    ax1 = fig.add_subplot(3,1,1)
-    sns.heatmap(ratio_cond[name],cmap='Spectral',annot=template_activ, fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
-    #ax1.title.set_text(name+' Conditional prob of Activations')
-    ax1 = fig.add_subplot(3,1,2)
-    sns.heatmap(ratio_mean[name],cmap='Spectral',annot=template_mean, fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence Mean'))
-    #ax1.title.set_text(name+' Confidence Mean')
-    ax1 = fig.add_subplot(3,1,3)
-    sns.heatmap(ratio_std[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence STD'))
-    fig.suptitle("Ratios weighted with the Prob. for MSO: "+name)
-    plt.show()
+    try:
+        
+        ax1 = fig.add_subplot(3,2,n+1)
+        #sns.heatmap(ratio_cond[name],cmap='Spectral',annot=template_activ, fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Cond. Prob. of Activations')) #,cbar_kws={'label': 'Cond. Prob. of Activations','location'="right"}
+        #ax1.title.set_text(name+' Conditional prob of Activations')
+        #ax1 = fig.add_subplot(3,1,2)
+        sns.heatmap(ratio_mean[name],cmap='Spectral',annot=template_mean, fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence Mean'))
+        #ax1.title.set_text(name+' Confidence Mean')
+        #ax1 = fig.add_subplot(3,1,3)
+        #sns.heatmap(ratio_std[name],cmap='Spectral',annot=False,xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver',cbar_kws = dict(label='Weighted with Confidence STD'))
+        ax1.title.set_text(name)
+    except:
+        print('Error printing')
+        
+fig.suptitle("Weighted Corrections and Window Selection: Mean Conf.")
+plt.show()
     
+# 4) Select / order -- Take into account Activ and Mean conf + STD of Mean
+# we get all the necesary metrics for the final ranking ... with several categories and then we add them up (like a talent contest)
+sum_up_data={}
+for n in range(len(mso_set)):
+    name='MSO_'+str(n)
+    sum_up_data[name]={}
+    sum_up_data[name]['activ_acc']=[]
+    sum_up_data[name]['prob_acc']=[]
+    sum_up_data[name]['ratio_score']=[]
+    sum_up_data[name]['interval']=[]
+    sum_up_data[name]['mean_pos_dist_vs_wind']=[]
+    sum_up_data[name]['conf_std_values_vs_avg']=[]
+    sum_up_data[name]['cond_prob_mean']=[]
+    sum_up_data[name]['conf_mean']=[]
+    i=-1
+    for var in var_names:
+        i=i+1
+        var=var_names[i]
+        sum_up_data[name][var]={}
+        if results_selection_activ[name][var]['score']!='too narrow to evaluate':
+            half=int((results_selection_activ[name][var]['window']-1)/2)
+            sum_up_data[name]['activ_acc'].append(sum(mtr_perc_activ[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
+            sum_up_data[name]['prob_acc'].append(sum(matr_prbs[i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
+            sum_up_data[name]['ratio_score'].append(sum_up_data[name]['activ_acc'][i]/sum_up_data[name]['prob_acc'][i])
+            sum_up_data[name]['interval'].append([bins[var][results_selection_activ[name][var]['position']-half],bins[var][results_selection_activ[name][var]['position']+half+1]])
+            sum_up_data[name]['mean_pos_dist_vs_wind'].append(abs(results_selection_activ[name][var]['position']-results_selection_mean[name][var]['position'])/results_selection_activ[name][var]['window'])
+            sum_up_data[name]['conf_std_values_vs_avg'].append(np.mean(corrected_std[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1])/np.mean(corrected_std[name][i,:]))
+            #print(sum_up_data[name]['conf_std_values_vs_avg'])
+            sum_up_data[name]['cond_prob_mean'].append(np.mean(corrected_cond[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
+            sum_up_data[name]['conf_mean'].append(np.mean(corrected_mean[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
+        else:
+            sum_up_data[name]['activ_acc'].append(-1)
+            sum_up_data[name]['prob_acc'].append(-1)
+            sum_up_data[name]['ratio_score'].append(-1)
+            sum_up_data[name]['interval'].append(-1)
+            sum_up_data[name]['mean_pos_dist_vs_wind'].append(-1)
+            sum_up_data[name]['conf_std_values_vs_avg'].append(-1)
+            sum_up_data[name]['cond_prob_mean'].append(-1)
+            sum_up_data[name]['conf_mean'].append(-1)
+
+# To merge, each of the major 3 indicators is taken and ranked. 
+#The average position is weighted by the possition distances between cond_prob and mean_conf combined with the rank of std_conf
+
+import scipy.stats as ss
+result_scores={}
+selected_key_vars={}
+for n in range(len(mso_set)):
+    name='MSO_'+str(n)
+    selected_key_vars[name]=[]
+    ratio_score=ss.rankdata(sum_up_data[name]['ratio_score'],method='dense')
+    cond_prob_mean=ss.rankdata(sum_up_data[name]['cond_prob_mean'],method='dense')
+    conf_mean=ss.rankdata(sum_up_data[name]['conf_mean'],method='dense')
+    conf_std_values_vs_avg=np.array(sum_up_data[name]['conf_std_values_vs_avg'])
+    mean_pos_dist=np.array(sum_up_data[name]['mean_pos_dist_vs_wind'])
+    print(name)
+    print('   Total Count Results: '+str((ratio_score+cond_prob_mean+conf_mean)))
+    print('   Boost Multiplier Dist: '+str((1/(1+np.abs(mean_pos_dist)))))
+    print('   Boost Multiplier STD: '+str(np.sqrt(np.abs(conf_std_values_vs_avg))))
+    result_scores[name]=(ratio_score+cond_prob_mean+conf_mean)*(1/(1+np.abs(mean_pos_dist)))*np.sqrt(np.abs(conf_std_values_vs_avg)) 
+    print('   Final Scores: '+str(result_scores[name]))
+    #Only pay attention to the vars that represent 60(?)% of the total points
+    not_assembled=True
+    acc=0
+    result_order=np.argsort(result_scores[name])
+    i=0
+    to_print=''
+    while not_assembled:
+        i=i+1
+        acc=acc+result_scores[name][result_order[-i]]/sum(result_scores[name])
+        selected_key_vars[name].append(result_order[-i])
+        to_print=to_print+var_names[result_order[-i]]+', '
+        if acc>=0.6:
+            not_assembled=False
+            print('   The Selected variables are: '+to_print)
+    print('------------------------------------------------')      
+    
+# now across all MSOs, what is the final result --> the MSOs with more total activations more weight right?
+weight=[]
+for n in range(len(mso_set)):
+    name='MSO_'+str(n)
+    weight.append(sum(activations[n]))
+    
+weight=(np.array(weight)/sum(weight))**0.5
+weight=weight/sum(weight)
+
+
+for n in range(len(mso_set)):
+    name='MSO_'+str(n)
+    if n==0:
+        combined_result=result_scores[name]*weight[n]
+    else:
+        combined_result=result_scores[name]*weight[n]+combined_result
+
+not_assembled=True   
+acc=0     
+result_order=np.argsort(combined_result)
+vars_final=[]
+i=0
+to_print=''
+while not_assembled:
+    i=i+1
+    acc=acc+combined_result[result_order[-i]]/sum(combined_result)
+    vars_final.append(result_order[-i])
+    to_print=to_print+var_names[result_order[-i]]+', '
+    if acc>=0.6:
+        not_assembled=False
+        print('   The Selected variables are: '+to_print)

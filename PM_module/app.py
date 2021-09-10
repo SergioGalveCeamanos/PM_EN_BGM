@@ -69,7 +69,7 @@ def build_model(data):
         preferent=[]
     print(data)
     response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set,filter_stab=filter_stab)
-    
+    return response
 # PRIORITY CRITERIA: Forecast and Probabilities ahead of Analysis (TO BE IMPLEMENTED)
 def get_task(file):
     # no indication of who is accesing the file ... to be improved
@@ -160,7 +160,17 @@ def cycle(task):
                 data = pickle.load(filehandler)
                 filehandler.close()
                 print('Loaded data to build new model from fiel: '+n_model)
-                build_model(data)
+                response=build_model(data)
+                for t in response['times_training']:
+                    to_write, do_prob=get_analysis(data['device'],t[0],t[1],version=data['version'],option=options[i],extra_name=extra_names[i])
+                    if len(to_write)>1:
+                        upload_results(to_write,'analysis')
+                        probabilities,mso_set= get_probability(data['device'],t[1],start_time=t[0],version=data['version'])
+                        upload_results(probabilities,'probabilities')
+                        report=generate_report(to_write,probabilities,mso_set,size_mavg=20,version=data['version'])
+                        print(report)
+                        upload_results(report,'report')
+                
                 caching.clear_cache()
                 print('Cleared Cache and Model Trained')
                 r=True

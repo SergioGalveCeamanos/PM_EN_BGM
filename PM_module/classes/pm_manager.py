@@ -23,6 +23,7 @@ import pandas as pd
 from .fault_detector_class_ES import fault_detector
 from .MSO_selector_GA import find_set_v2
 from .test_cross_var_exam import launch_analysis
+from .conditional_analysis_methods import get_cond_activ_mtrs,get_mean_std_mtrs,get_joint_tables
 import datetime 
 import traceback
 import copy
@@ -52,7 +53,6 @@ def fix_dict(d):
         
 def get_available_models():
     models=os.listdir('/models')
-    #print(models)
     devices={'available_models':[]}
     for m in models:
         if m[0:6]=='model_':
@@ -517,7 +517,7 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
     k=0.7
     x0=5
     helth=np.sqrt(1 / (1 + np.exp(-k*(x-x0))))
-    plt.plot(x,helth)
+    #plt.plot(x,helth)
     helth=100*(1-(0.9**selection))*1.53534
     
     #B. Most Critical Timebands
@@ -576,10 +576,9 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
     return report
 
 # generate analysis over given data for conditional analysis
-def conditional_analysis(fm,telemetry,activations,confidence):
-    training_data_stats=fm.train
+def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size=100):
+    training_data_stats=fm.training_data_stats
     bins={}
-    bin_size=50
     labels=[]
     for i in range(bin_size):
         labels.append(i)
@@ -589,120 +588,25 @@ def conditional_analysis(fm,telemetry,activations,confidence):
             bb.append(training_data_stats[var]['min']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))
         bb.append(training_data_stats[var]['min']+1000*training_data_stats[var]['std']+((i+1)/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))                 
         bins[var]= bb
-    joint={}
-    for var in var_names:
-        joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':activations[0],'MSO_1':activations[1],'MSO_2':activations[2],'MSO_3':activations[3],'MSO_4':activations[4],'MSO_5':activations[5]})
-      
-    # get the conditional probabilities for activations only (each var and each MSO)
-    N_appear=joint[var_names[0]][var_names[0]].shape[0]
-    joint_results={}
-    for var in var_names:
-        joint_results[var]={}
-        N_appear=joint[var].shape[0]
-        for i in range(len(mso_set)):
-            name='MSO_'+str(i)
-            joint_results[var][name]={}
-            subset=joint[var].loc[joint[var][name]==1]
-            joint_results[var][name]['Total_MSO_activ']=subset.shape[0]
-            a = subset[var].unique()
-            for j in a:
-                if j==0:
-                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
-                elif j==len(labels):
-                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
-                else:
-                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
-                joint_results[var][name][interval]={}
-                joint_results[var][name][interval]['Legend_index']=j
-                joint_results[var][name][interval]['Activations_%']=subset.loc[joint[var][var]==j].shape[0]*100/joint_results[var][name]['Total_MSO_activ']
-                joint_results[var][name][interval]['P_joint']=subset.loc[joint[var][var]==j].shape[0]/N_appear
-                joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
-                joint_results[var][name][interval]['P_cond']=joint_results[var][name][interval]['P_joint']/joint_results[var][name][interval]['P_var']
-        
     # make matrices and plot heatmaps for each MSO
+    joint_activ,joint_conf = get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,fm.mso_set)
+    
     y_labe=[]
     for var in var_names:
-        y_labe.append(traductor[var])
+        y_labe.append(fm.traductor[var])
     # plot prob of each value in the timeframe selected
+    N_appear=joint_activ[var_names[0]][var_names[0]].shape[0]
     matr_prbs=np.zeros([len(var_names),len(labels)])
     i=-1
     for var in var_names:
         i=i+1
         for j in labels:
-            matr_prbs[i,j]=np.round(joint[var].loc[joint[var][var]==j].shape[0]*100/N_appear,decimals=3)
+            matr_prbs[i,j]=np.round(joint_activ[var].loc[joint_activ[var][var]==j].shape[0]*100/N_appear,decimals=3)
     
-    # plot cond for each mso
-    cond_activ={}
-    for i in range(len(mso_set)):       
-        name='MSO_'+str(i)
-        matr=np.zeros([len(var_names),len(labels)])
-        i=-1
-        for var in var_names:
-            i=i+1
-            for j in labels:
-                if j==0:
-                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
-                elif j==len(labels):
-                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
-                else:
-                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
-                if interval in joint_results[var][name]:
-                    matr[i,j]=np.round(joint_results[var][name][interval]['P_cond']*100,decimals=3)
-                else:
-                    matr[i,j]=0
-    
-    # get the conditional probabilities for confidences only (each var and each MSO)  
-    #create the joint tables
-    joint={}
-    for var in var_names:
-        joint[var]=pd.DataFrame({var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels),'MSO_0':confidences[0],'MSO_1':confidences[1],'MSO_2':confidences[2],'MSO_3':confidences[3],'MSO_4':confidences[4],'MSO_5':confidences[5]})
-      
-    # get the conditional probabilities for activations only (each var and each MSO)
-    N_appear=joint[var_names[0]][var_names[0]].shape[0]
-    joint_results={}
-    for var in var_names:
-        joint_results[var]={}
-        N_appear=joint[var].shape[0]
-        for i in range(len(mso_set)):
-            name='MSO_'+str(i)
-            joint_results[var][name]={}
-            a = joint[var][var].unique()
-            for j in a:
-                if j==0:
-                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
-                elif j==len(labels):
-                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
-                else:
-                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
-                joint_results[var][name][interval]={}
-                joint_results[var][name][interval]['Legend_index']=j
-                
-                subset=joint[var].loc[joint[var][var]==j]
-                joint_results[var][name][interval]['C_mean']=subset[name].describe()['mean']
-                joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
-                joint_results[var][name][interval]['C_std']=subset[name].describe()['std']
-    
-    for i in range(len(mso_set)):       
-        name='MSO_'+str(i)
-        matr_mean=np.zeros([len(var_names),len(labels)])
-        matr_std=np.zeros([len(var_names),len(labels)])
-        i=-1
-        for var in var_names:
-            i=i+1
-            for j in labels:
-                if j==0:
-                    interval='-Inf to '+str(np.round(bins[var][j+1],decimals=2))
-                elif j==len(labels):
-                    interval=str(np.round(bins[var][j],decimals=2))+' to +Inf'
-                else:
-                    interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
-                if interval in joint_results[var][name]:
-                    matr_mean[i,j]=np.round(joint_results[var][name][interval]['C_mean'],decimals=3)
-                    matr_std[i,j]=np.round(joint_results[var][name][interval]['C_std'],decimals=3)
-                else:
-                    matr_mean[i,j]=0
-                    matr_std[i,j]=0
-    return 
+    # get the respective tables
+    mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
+    mtr_mean_current,mtr_std_current=get_mean_std_mtrs(joint_conf,fm.mso_set,labels,var_names,bins)
+    return mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
 def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,10,20]):
@@ -713,7 +617,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
     next_t=next_t.isoformat()
     time_start=next_t[:(len(next_t)-3)]+'Z'
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
-    names.append(fm.target_var)
+    #names.append(fm.target_var)
     ######## NOT LIKE THIS --> MUST BE CHANGED #############
     if int(device)==71471 or int(device)==74124:
         aggSeconds=1
@@ -730,6 +634,8 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
         print(' [!] Error gathering Telemetry')
     
     # check if the reports are to be concern a generate a notification analysis
+    health=[]
+    labels=[]
     for i in data:
         health.append(r[i][0]['health'])
         labels.append(r[i][0]['timestamp'])
@@ -751,7 +657,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
         ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
         points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
     
-    # collect data
+    # collect data --> is 60% appropiate value with new health measures ??
     if np.mean(points)>60:
         print(' [I] Healthy resolution with evaluations: '+str(points))
     else:
@@ -777,7 +683,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
         #download the data
         #Telemetry
         try:
-            body={'device':machine,'names':names,'times':[],'aggSeconds':aggSeconds}
+            body={'device':device,'names':names,'times':[],'aggSeconds':aggSeconds}
             #jobs = []
             proc=int(multiprocessing.cpu_count())
             manager = multiprocessing.Manager()
@@ -809,8 +715,8 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
             raise SystemExit(e)
         print('All Data Collected')
         print(data)
-        names=['activations','confidence','timestamp','group_prob']
-        body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time],'group_prob':1}
+        names_fields=['activations','confidence','timestamp','group_prob']
+        body={'device':str(device),'trained_version':version,'names':names_fields,'times':[time_start,time_stop],'group_prob':1}
         try:
             r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
             # here data will be a list of dicts, in each one all the fields separated by mso
@@ -822,9 +728,39 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
         activations=[]
         confidences=[]
         for i in range(len(fm.mso_set)):
-            activations.append(all_data[i][names[0]])
-            confidences.append(all_data[i][names[1]])
+            activations.append(all_data[i][names_fields[0]])
+            confidences.append(all_data[i][names_fields[1]])
         
+        # call for the core matrices of the analysis
+        mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,data,activations,confidences,names,bin_size=100)
+
+def set_up_notification_baselines(device,time_start,time_stop,version="",option=[],length=24,ma=[5,10,20]):
+    file, folder = file_location(device,version)
+    fm=load_model(file, folder)
+    telemetry=fm.full_train_data
+    names=['activations','confidence','timestamp','group_prob']
+    body={'device':str(device),'trained_version':version,'names':names,'times':[time_start,time_stop],'group_prob':1}
+    try:
+        r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
+        # here data will be a list of dicts, in each one all the fields separated by mso
+        all_data=r.json()
+    except requests.exceptions.RequestException as e:  # This is the correct syntax
+        traceback.print_exc()
+        raise SystemExit(e)
+
+    activations=[]
+    confidences=[]
+    times=[]
+    for i in range(len(fm.mso_set)):
+        activations.append(all_data[i][names[0]])
+        confidences.append(all_data[i][names[1]])
+        times.append(all_data[i][names[2]])
+    # [!!!] check that the data is the same in full_train_data vs the one obtained for activations and so ...
+    # call for the core matrices of the analysis
+    names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+    mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,fm.full_train_data,activations,confidences,names,bin_size=100)
+
+    
 def collect_timeband(time,machine,names,aggSeconds,shared_list):
     body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
     r = requests.post('http://db_manager:5001/collect-data',json = body) # 'http://db_manager:5001/collect-data'
@@ -980,7 +916,7 @@ def get_data_batch(body,time,shared_list):
         print(time)
     
     
-def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True):
+def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True,traductor={}):
    
     file, folder = file_location(machine,version) 
     do=False
@@ -1004,6 +940,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         fault_manager.read_msos()
         fault_manager.MSO_residuals()
         fault_manager.time_bands=time_bands
+        fault_manager.traductor=traductor
         names,times_b=fault_manager.get_data_names(option='CarolusRex',times=time_bands)
         names.append(target_var)
         body={'device':machine,'names':names,'times':times_b,'aggSeconds':aggSeconds}
@@ -1113,7 +1050,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             fault_manager.test_data.to_csv(file_test)
             fault_manager.kde_data.to_csv(file_kde)
             fault_manager.full_train_data.to_csv(file_full)
-            
+            fault_manager.training_data_stats=fault_manager.training_data.transpose().describe()
             print('[I] Saved sampled and filtered data')
             print('[I] Filtered Training Data')
             print(fault_manager.training_data)
@@ -1174,12 +1111,16 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         #fault_manager.create_FSSM(SM)
         t_b=datetime.datetime.now()
         dif=t_b-t_a
+        
+        # Here we test the whole training data set 
+        
+        
         #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version
         fault_manager.Save(folder,file)
         fault_manager.data_creation=datetime.datetime.now()
-        response={'filename':file,'training_data shape':fault_manager.training_data.shape,'training result':response_dic} #,'FSSM':fault_manager.FSSM
+        response={'filename':file,'training_data shape':fault_manager.training_data.shape,'training result':response_dic,'times_training':time_set} #,'FSSM':fault_manager.FSSM
     else:
         response={'Model already exists':True}
     return response #json.dumps(response)
