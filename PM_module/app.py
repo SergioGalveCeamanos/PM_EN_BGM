@@ -10,7 +10,7 @@ def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-from classes.pm_manager import get_analysis,set_new_model,update_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data
+from classes.pm_manager import get_analysis,set_new_model,update_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data,notification_trigger
 import pandas as pd
 import requests
 import time
@@ -96,8 +96,8 @@ def get_task(file):
 
 # Funtion to load all the documents --> combined with the bulk function            
 def upload_results(documents,task_type):
-    http_dic={'analysis':'http://db_manager:5001/upload-analysis','configuration':'http://db_manager:5001/upload-configuration','forecasts':'http://db_manager:5001/upload-forecast','probabilities':'http://db_manager:5001/upload-probabilities','report':'http://db_manager:5001/upload-report'}
-    error_dic={'analysis':'[¡] Error uploading model analysis in sample #','configuration':' [!] Error uploading Configuration','forecasts':' [!] Error uploading Forecast','probabilities':' [!] Error uploading Probabilities','report':' [!] Error uploading report'}
+    http_dic={'analysis':'http://db_manager:5001/upload-analysis','configuration':'http://db_manager:5001/upload-configuration','forecasts':'http://db_manager:5001/upload-forecast','probabilities':'http://db_manager:5001/upload-probabilities','report':'http://db_manager:5001/upload-report','notification':'http://db_manager:5001/upload-notification'}
+    error_dic={'analysis':'[¡] Error uploading model analysis in sample #','configuration':' [!] Error uploading Configuration','forecasts':' [!] Error uploading Forecast','probabilities':' [!] Error uploading Probabilities','report':' [!] Error uploading report','notification':' [!] Error uploading notification report'}
     try:
         r = requests.post(http_dic[task_type],json = documents)
     except:
@@ -129,6 +129,10 @@ def cycle(task):
                         report=generate_report(to_write,probabilities,mso_set,size_mavg=20,version=v)
                         print(report)
                         upload_results(report,'report')
+                        
+                        notification_rep=notification_trigger(task['device'],task['time_stop'],version=task['version'],option=[],length=24,ma=[5,10,20])
+                        if notification_rep!='All clear':
+                            upload_results(notification_rep,'notification')
                         # Now get forecasts
                         """new_conf, do_prob_fore, forecast_docs=get_forecast(task['device'],task['time_stop'],version=v)
                         print(new_conf)
@@ -161,7 +165,7 @@ def cycle(task):
                 filehandler.close()
                 print('Loaded data to build new model from fiel: '+n_model)
                 response=build_model(data)
-                for t in response['times_training']:
+                """for t in response['times_training']:
                     to_write, do_prob=get_analysis(data['device'],t[0],t[1],version=data['version'],option=options[i],extra_name=extra_names[i])
                     if len(to_write)>1:
                         upload_results(to_write,'analysis')
@@ -171,7 +175,7 @@ def cycle(task):
                         print(report)
                         upload_results(report,'report')
                 
-                caching.clear_cache()
+                caching.clear_cache()"""
                 print('Cleared Cache and Model Trained')
                 r=True
             

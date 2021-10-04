@@ -231,7 +231,7 @@ var_names=['ControlRegCompAC.VarFrequencyHzMSK',
  'ExtTemp']
 
 
-dates_goal = [["2021-05-25T13:00:00.000Z","2021-05-26T09:00:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
+dates_goal = [["2021-05-19T12:45:00.000Z","2021-05-25T00:10:00.000Z"],["2021-05-27T17:45:00.000Z","2021-05-30T02:10:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
 names_analysis = ['models_error', 'low_bounds', 'high_bounds',
     'activations', 'confidence', 'group_prob', 'timestamp']
 host = '137.116.224.197:9200'
@@ -385,9 +385,10 @@ for n in range(len(mso_set)):
                 matr[i,j]=0
     mtr_condactiv_fault[name]=matr
     ax1 = fig.add_subplot(3,2,n+1)
-    sns.heatmap(matr,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1,linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    if sum(sum(matr))>0:
+        sns.heatmap(matr,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1,linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
     plt.title(name)
-    file=r"\Conditional_Probability_"+name+".png"
+    #file=r"\Conditional_Probability_"+name+".png"
     #fig.savefig(root+file)
 fig.suptitle(' Conditional Probability of Activations (%)')
 plt.show()
@@ -543,9 +544,14 @@ def moving_average_variables(matr,matr_prb,var_names,wind_ratio=0.20):
 
 # to load and compare vs training baseline
 root=r'V:\PL\Projects\Shared\LAUDA Cloud\LUC - Industrial PhD\Follow Up\Meetings\Figures MSO trace back Analysis\D_Full_Training_Set_UC14'
-cond_train_file=root+'\joint_cond_activ_prob_trainingUC14.pkl'
-means_train_file=root+'\joint_confidence_means_trainingUC14.pkl'
-probs_train_file=root+'\prob_dist_trainingUC14.pkl'
+if bin_size==50:
+    cond_train_file=root+'\joint_cond_activ_prob_trainingUC14.pkl'
+    means_train_file=root+'\joint_confidence_means_trainingUC14.pkl'
+    probs_train_file=root+'\prob_dist_trainingUC14.pkl'
+else:    
+    cond_train_file=root+'\joint_cond_activ_prob_trainingUC14_150bins.pkl'
+    means_train_file=root+'\joint_confidence_means_trainingUC14_150bins.pkl'
+    probs_train_file=root+'\prob_dist_trainingUC14_150bins.pkl'
 filehandler = open(cond_train_file, 'rb') 
 cond_train_joint_res = pickle.load(filehandler)
 filehandler.close()
@@ -555,6 +561,7 @@ filehandler.close()
 filehandler = open(probs_train_file, 'rb') 
 probs_train_mtr = pickle.load(filehandler)
 filehandler.close()
+
 
 mtr_condactiv_train=get_cond_activ_mtrs(cond_train_joint_res,mso_set,labels,var_names,bins)
 mtr_mean_train,mtr_std_train=get_mean_std_mtrs(means_train_joint_res,mso_set,labels,var_names,bins)

@@ -23,7 +23,7 @@ import pandas as pd
 from .fault_detector_class_ES import fault_detector
 from .MSO_selector_GA import find_set_v2
 from .test_cross_var_exam import launch_analysis
-from .conditional_analysis_methods import get_cond_activ_mtrs,get_mean_std_mtrs,get_joint_tables
+from .conditional_analysis_methods import get_cond_activ_mtrs,get_mean_std_mtrs,get_joint_tables,corrected_matrices,final_selection
 import datetime 
 import traceback
 import copy
@@ -90,6 +90,15 @@ def load_unit_data(device,version="",data_file='/models/model_data_'):
     with open(data_file, 'wb') as handle:
         pickle.dump(d, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+# Funtion to load all the documents --> combined with the bulk function            
+def upload_results(documents,task_type):
+    http_dic={'analysis':'http://db_manager:5001/upload-analysis','configuration':'http://db_manager:5001/upload-configuration','forecasts':'http://db_manager:5001/upload-forecast','probabilities':'http://db_manager:5001/upload-probabilities','report':'http://db_manager:5001/upload-report','notification':'http://db_manager:5001/upload-notification'}
+    error_dic={'analysis':'[¡] Error uploading model analysis in sample #','configuration':' [!] Error uploading Configuration','forecasts':' [!] Error uploading Forecast','probabilities':' [!] Error uploading Probabilities','report':' [!] Error uploading report','notification':' [!] Error uploading notification report'}
+    try:
+        r = requests.post(http_dic[task_type],json = documents)
+    except:
+        print(error_dic[task_type])
+        traceback.print_exc()
 
 def get_analysis(device,time_start,time_stop,version="",aggSeconds=1,option=[],extra_name=[]):
 
@@ -606,7 +615,7 @@ def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size
     # get the respective tables
     mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
     mtr_mean_current,mtr_std_current=get_mean_std_mtrs(joint_conf,fm.mso_set,labels,var_names,bins)
-    return mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
 def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,10,20]):
@@ -660,6 +669,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
     # collect data --> is 60% appropiate value with new health measures ??
     if np.mean(points)>60:
         print(' [I] Healthy resolution with evaluations: '+str(points))
+        notification_report='All clear'
     else:
         #generate time stamps for the whole period in slots of 30 min
         base_time=30 #minutes per request
@@ -732,8 +742,12 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
             confidences.append(all_data[i][names_fields[1]])
         
         # call for the core matrices of the analysis
-        mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,data,activations,confidences,names,bin_size=100)
-
+        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault=conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
+        R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
+        sum_up_data, result_scores, combined_result = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
+        notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
+    return notification_report
+        
 def set_up_notification_baselines(device,time_start,time_stop,version="",option=[],length=24,ma=[5,10,20]):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
@@ -758,8 +772,8 @@ def set_up_notification_baselines(device,time_start,time_stop,version="",option=
     # [!!!] check that the data is the same in full_train_data vs the one obtained for activations and so ...
     # call for the core matrices of the analysis
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
-    mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,fm.full_train_data,activations,confidences,names,bin_size=100)
-
+    matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,fm.training_data,activations,confidences,names,bin_size=fm.bin_size)
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
     
 def collect_timeband(time,machine,names,aggSeconds,shared_list):
     body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
@@ -915,8 +929,12 @@ def get_data_batch(body,time,shared_list):
         print(' [E] A time band was not properly received: ')
         print(time)
     
+def train_and_upload(machine,time,version,aggSeconds):
+    to_write, do_prob=get_analysis(machine,time[0],time[1],version,aggSeconds)
+    upload_results(to_write,'analysis')
+    return True
     
-def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True,traductor={}):
+def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True,traductor={},bin_si=100):
    
     file, folder = file_location(machine,version) 
     do=False
@@ -935,11 +953,11 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         sensors_in_tables=fix_dict(sensors_in_tables)
         faults=fix_dict(faults)
         sensors=fix_dict(sensors)
-        #print(faults)
         fault_manager = fault_detector(file,mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,aggS=aggSeconds,filter_stab=filter_stab)
         fault_manager.read_msos()
         fault_manager.MSO_residuals()
         fault_manager.time_bands=time_bands
+        fault_manager.bin_size=bin_si
         fault_manager.traductor=traductor
         names,times_b=fault_manager.get_data_names(option='CarolusRex',times=time_bands)
         names.append(target_var)
@@ -1111,10 +1129,31 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         #fault_manager.create_FSSM(SM)
         t_b=datetime.datetime.now()
         dif=t_b-t_a
+        fault_manager.version=version
+        fault_manager.Save(folder,file)
         
         # Here we test the whole training data set 
-        
-        
+        proc=int(multiprocessing.cpu_count())
+        manager = multiprocessing.Manager()
+        shared_list=manager.list()
+        sub_batch=[]
+        sub_si=0
+for time in time_set:
+            jobs = []
+            if len(sub_batch)<(proc-1):
+                sub_batch.append(time)
+            else:
+                sub_batch.append(time)
+                for t in sub_batch:
+                    p = multiprocessing.Process(target=get_analysis, args=(machine,time[0],time[1],version,aggSeconds))
+                    p.start()
+                    jobs.append(p)
+                for q in jobs:
+                    q.join()
+                sub_batch=[]
+
+        # with all training range prepared we do the baseline conditional analysis
+        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(machine,time_set[0][0],time_set[-1][1],version="",option=[],length=24,ma=[5,10,20])
         #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version
@@ -1236,6 +1275,29 @@ def update_model(device,time_start,time_stop,version="",aggSeconds=1):
     print(fault_manager.fault_mso_sensitivity)
     t_b=datetime.datetime.now()
     dif=t_b-t_a
+    # Here we test the whole training data set 
+    proc=int(multiprocessing.cpu_count())
+    manager = multiprocessing.Manager()
+    shared_list=manager.list()
+    sub_batch=[]
+    sub_si=0
+    for time in time_set:
+        jobs = []
+        if len(sub_batch)<(proc-1):
+            sub_batch.append(time)
+        else:
+            sub_batch.append(time)
+            for t in sub_batch:
+                p = multiprocessing.Process(target=get_analysis, args=(device,time[0],time[1],version,aggSeconds))
+                p.start()
+                jobs.append(p)
+            for q in jobs:
+                q.join()
+            sub_batch=[]
+
+    # with all training range prepared we do the baseline conditional analysis
+    fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(device,time_set[0][0],time_set[-1][1],version="",option=[],length=24,ma=[5,10,20])
+    
     fault_manager.Save(folder,file)
     fault_manager.data_creation=datetime.datetime.now()
     #fault_manager.Load(folder,file)

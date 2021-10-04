@@ -1232,7 +1232,6 @@ class fault_detector:
         #file = open(self.file_name, 'wb') 
         #pickle.dump(self, file)
         
-        
      def Load(self,folder,file):
         #self.ES_manager.connect()
         filehandler = open(file, 'rb') 

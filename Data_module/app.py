@@ -194,6 +194,21 @@ def upload_report():
       #worked='False'
     return worked
 
+@app.route('/upload-notification', methods=['POST'])
+def upload_notification():
+    data = request.get_json()
+    try:
+        response=em.load_notification(data)
+        worked='True'
+    except:
+        print('[¡] Error loading notification to the DB')  
+        traceback.print_exc()
+        worked='False'
+    #except:
+      #print("An exception occurred ...")
+      #worked='False'
+    return worked
+
 # launch service in IP 127.0.0.1
 if __name__ == '__main__':
     app.run(port=5001,threaded=True) #host='127.0.0.1'

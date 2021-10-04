@@ -360,6 +360,28 @@ class elastic_manager:
                  print(' [!] Error uploading Report')
                  traceback.print_exc()
          return response
+     
+     #LOAD Report: Resulting from each summary report
+     def load_report(self,data):
+         ty='notif_'
+         self.connect()
+         ind=self.get_index_analytics(data['timestamp'],ty)
+         model=str(data['device'])+data['trained_version']
+         id_es=self.get_ids(data['timestamp'],ty,model)
+         b=json.dumps(data)
+         response=False
+         try:
+             response=self.client.create(index=ind,id=id_es,body=b,doc_type='notification')
+         except:
+             try:
+                 print('[I] Trying to delete old document - notification.')
+                 response=self.client.delete(index=ind,id=id_es,doc_type='notification')
+                 response=self.client.create(index=ind,id=id_es,body=b,doc_type='notification')
+             except:
+                 print(' [!] Error uploading notification')
+                 traceback.print_exc()
+         return response
+     
      #DOWNLOAD Configuration: Resulting from each forecast computation 
      def get_configuration(self,times,version):
          '''{
