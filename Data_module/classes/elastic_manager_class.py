@@ -361,8 +361,8 @@ class elastic_manager:
                  traceback.print_exc()
          return response
      
-     #LOAD Report: Resulting from each summary report
-     def load_report(self,data):
+     #LOAD Notification: Resulting from each triggered analysis
+     def load_notification(self,data):
          ty='notif_'
          self.connect()
          ind=self.get_index_analytics(data['timestamp'],ty)
@@ -510,7 +510,7 @@ class elastic_manager:
          return priors
      
         
-     def get_reports(self,times,faults,version,length=200):
+     def get_reports(self,times,version,length=200):
          ty='rep_'
          ind=self.get_index_analytics(times[1],ty) 
          response = self.client.search(

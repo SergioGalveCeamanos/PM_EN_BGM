@@ -87,7 +87,7 @@ def collect_reports():
     print(data)
     device = data['device']
     version = data['trained_version']
-    times = ["1945-08-06T08:15:00.000Z",data['times']]
+    times = data['times']
     em.device=device
     # we should get the config closest to the given time
     d=em.get_reports(times,version)

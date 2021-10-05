@@ -615,10 +615,49 @@ def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size
     # get the respective tables
     mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
     mtr_mean_current,mtr_std_current=get_mean_std_mtrs(joint_conf,fm.mso_set,labels,var_names,bins)
-    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe
+
+# use the sound analogy to analyze the faults feasible given the registered activations only
+def key_strokes(fm,activations):
+    # Key Strokes
+    sound = np.zeros((len(activations), len(activations[0])))
+    key_strokes = -1*np.ones(len(activations))
+    alpha = 0.005
+    betha = alpha/18
+    gamma_y = 0.5
+    for i in range(1, len(activations[0])):
+        for j in range(len(activations)):
+            if activations[j][i] == 1:
+                key_strokes[j] = i
+                sound[j][i] = 1
+            else:
+                # Double Decay
+                if 1-sound[j][i-1] <= gamma_y:
+                    sound[j][i] = sound[j][i-1]-alpha
+                else:
+                    sound[j][i] = sound[j][i-1]-betha
+                    if sound[j][i] < 0:
+                        sound[j][i] = 0
+    heard_faults=np.zeros((len(fm.fault_signature_matrix),len(activations[0])))
+    fsm=np.matrix(fm.fault_signature_matrix)
+    for i in range(len(activations[0])):
+        active=[]
+        efs=np.arange(0,len(fm.fault_signature_matrix))
+        for j in  range(len(activations)):
+            if sound[j,i]>0.15:
+                active.append(j)
+    
+        if active!=[]:
+            for m in active:
+                keep=np.where(fsm[:,m]==1)[0]
+                efs=np.intersect1d(efs,keep)
+    
+            for f in efs:
+                heard_faults[f,i]=1
+    return heard_faults
 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
-def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,10,20]):
+def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12]):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     #get initial date
@@ -631,7 +670,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
     if int(device)==71471 or int(device)==74124:
         aggSeconds=1
     ########################################################
-    body={'device':str(device),'times':times_b,'aggSeconds':aggSeconds}
+    body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
     #headers = {'Content-Type': 'application/json'}
     try:
         # headers=headers
@@ -646,8 +685,8 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
     health=[]
     labels=[]
     for i in data:
-        health.append(r[i][0]['health'])
-        labels.append(r[i][0]['timestamp'])
+        health.append(data[i][0]['health'])
+        labels.append(data[i][0]['timestamp'])
     to_plot={}
     for m in ma:
         to_plot[m]=[]
@@ -741,10 +780,16 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,1
             activations.append(all_data[i][names_fields[0]])
             confidences.append(all_data[i][names_fields[1]])
         
+        # Get all the fault feasibility 
+        heard_faults=key_strokes(fm,activations)
+        labels=[]
+        for i in range(fm.bin_size):
+            labels.append(i)
+        y_labels=[]
         # call for the core matrices of the analysis
-        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault=conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
+        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
         R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
-        sum_up_data, result_scores, combined_result = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
+        sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
         notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
     return notification_report
         
@@ -935,7 +980,6 @@ def train_and_upload(machine,time,version,aggSeconds):
     return True
     
 def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,retrain=True,aggSeconds=5,sam=100000,version="",preferent=[],mso_set=[],production=False,out_var='W_OutTempUser',target_var='RegSetP',filter_stab=True,traductor={},bin_si=100):
-   
     file, folder = file_location(machine,version) 
     do=False
     gen_search=False
@@ -999,7 +1043,6 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
                         from_t=until_t
                         if until_t>=end:
                             go_on=False
-
             else:
                 time_set=times_b
 
@@ -1138,14 +1181,14 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         shared_list=manager.list()
         sub_batch=[]
         sub_si=0
-for time in time_set:
+        for time in time_set:
             jobs = []
             if len(sub_batch)<(proc-1):
                 sub_batch.append(time)
             else:
                 sub_batch.append(time)
                 for t in sub_batch:
-                    p = multiprocessing.Process(target=get_analysis, args=(machine,time[0],time[1],version,aggSeconds))
+                    p = multiprocessing.Process(target=train_and_upload, args=(machine,time,version,aggSeconds))
                     p.start()
                     jobs.append(p)
                 for q in jobs:

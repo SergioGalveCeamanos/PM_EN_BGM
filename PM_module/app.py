@@ -10,7 +10,7 @@ def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-from classes.pm_manager import get_analysis,set_new_model,update_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data,notification_trigger
+from classes.pm_manager import upload_results,get_analysis,set_new_model,update_model,get_available_models,get_forecast, get_probability,generate_report,load_unit_data,notification_trigger
 import pandas as pd
 import requests
 import time
@@ -54,6 +54,7 @@ def build_model(data):
     max_ca_jump=data['transition_trigger_low_bounds']
     cont_cond=data['contour_conditions']
     version=data['version']
+    traductor=data['traductor']
     filter_stab=True
     if data['filter_stab']==0:
         print('   --> OPTION: No Filter Stability')
@@ -68,7 +69,7 @@ def build_model(data):
     else:
         preferent=[]
     print(data)
-    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set,filter_stab=filter_stab)
+    response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set,filter_stab=filter_stab,traductor=traductor)
     return response
 # PRIORITY CRITERIA: Forecast and Probabilities ahead of Analysis (TO BE IMPLEMENTED)
 def get_task(file):
@@ -93,16 +94,6 @@ def get_task(file):
     except:
         print('Error loading the table ...')
         return 'No task available'
-
-# Funtion to load all the documents --> combined with the bulk function            
-def upload_results(documents,task_type):
-    http_dic={'analysis':'http://db_manager:5001/upload-analysis','configuration':'http://db_manager:5001/upload-configuration','forecasts':'http://db_manager:5001/upload-forecast','probabilities':'http://db_manager:5001/upload-probabilities','report':'http://db_manager:5001/upload-report','notification':'http://db_manager:5001/upload-notification'}
-    error_dic={'analysis':'[¡] Error uploading model analysis in sample #','configuration':' [!] Error uploading Configuration','forecasts':' [!] Error uploading Forecast','probabilities':' [!] Error uploading Probabilities','report':' [!] Error uploading report','notification':' [!] Error uploading notification report'}
-    try:
-        r = requests.post(http_dic[task_type],json = documents)
-    except:
-        print(error_dic[task_type])
-        traceback.print_exc()
 
 def cycle(task):
     print(task)

@@ -7,6 +7,15 @@ Created on Mon Sep  6 11:56:09 2021
 import numpy as np
 import pandas as pd
 import copy
+from matplotlib import cm as CM
+import matplotlib.pyplot as plt
+import os
+from .pdf_printing import PDF
+import datetime
+import matplotlib as mpl
+import matplotlib.font_manager as fm
+import seaborn as sns
+from matplotlib.colors import LogNorm
 
 def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso_set):
     joint_activ={}
@@ -196,6 +205,8 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
             template_print[i].append(' ')
     template_print=np.array(template_print)
     
+    template_activ_set={}
+    template_mean_set={}
     for n in range(len(mso_set)):
         name='MSO_'+str(n)
         template_activ=copy.deepcopy(template_print)
@@ -209,7 +220,8 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
                 half=int((results_selection_activ[name][var]['window']-1)/2)
                 template_activ[i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]='*'
                 template_mean[i,results_selection_mean[name][var]['position']-half:results_selection_mean[name][var]['position']+half+1]='*'
-
+        template_activ_set[name]=template_activ
+        template_mean_set[name]=template_mean
         
     # 4) Select / order -- Take into account Activ and Mean conf + STD of Mean
     # we get all the necesary metrics for the final ranking ... with several categories and then we add them up (like a talent contest)
@@ -319,5 +331,148 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
             not_assembled=False
             print('   The Selected variables are: '+to_print)
         
-    return sum_up_data, result_scores, combined_result
+    return sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set
+
+
+# 
+def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up):
+    root_folder='/models/output_document/'
+    if not os.path.exists(root_folder):
+        print(root_folder)
+        os.mkdir(root_folder)
     
+    document=PDF(tit='Health Report - SN: '+str(device)+' - v: '+version+' - '+datetime.datetime.now().ctime())
+
+    fe = fm.FontEntry(fname='BrandonGrotesqueOffice-Light.ttf',name='Brandom')
+    fm.fontManager.ttflist.insert(0, fe) # or append is fine
+    #mpl.rcParams['font.family'] = fe.name # = 'your custom ttf font name'
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = fe.name
+    plt.rcParams['axes.edgecolor']='#333F4B'
+    plt.rcParams['axes.linewidth']=0.8
+    plt.rcParams['xtick.color']='#333F4B'
+    plt.rcParams['ytick.color']='#333F4B'
+    
+    # page 1 - Health Evolution   
+    name_health=root_folder+'health_evolution.png'
+    fig = plt.figure(figsize=(15.0, 20.0))
+    colors=['r','orange','y','g','purple','b','grey']
+    upper=[]
+    lower=[]
+    middle=[]
+    for i in range(len(health[ma[0]])):
+        sam=[]
+        for m in ma:
+            sam.append(health[m][i])
+        upper.append(max(sam))
+        lower.append(min(sam))
+        middle.append(np.mean(sam))
+    check_df=[]
+    t=-1
+    for m in ma:
+        t=t+1
+        plt.plot(middle,c='royalblue',linewidth=2, alpha=0.8, label='Average health evolution')
+        plt.fill_between(lower, upper, alpha=0.2,c='mediumstateblue')
+    plt.set_ylabel('Health % Indicator')
+    plt.legend()
+    plt.title('Last 24h Health Evolution')
+    plt.savefig(name_health, dpi=300, bbox_inches='tight')
+    body_health='The Monitoring system detected a significant health decrement and this notification report is created in response. This page presents the health indicator evolution the last 24h, smoothed from 30min analysis windows.'
+    document.print_page([name_health],body_health,'TCU Health Warning')
+    
+    # page 2 - Feasible Fault Analysis 
+    # https://scentellegher.github.io/visualization/2018/10/10/beautiful-bar-plots-matplotlib.html
+    name_faults=root_folder+'feasible_faults.png'
+    active_perc=[]
+    for i in range(heard_faults.shape[0]):
+        active_perc.append(np.round(sum(heard_faults[i])*100/len(heard_faults[i]),3))
+    percentages = pd.Series(active_perc, index=faults)
+    df = pd.DataFrame({'percentage' : percentages})
+    df = df.sort_values(by='percentage')
+    my_range=list(range(1,len(df.index)+1))
+    fig, ax = plt.subplots(figsize=(10,7))
+    plt.hlines(y=my_range, xmin=0, xmax=df['percentage'], color='#007ACC', alpha=0.2, linewidth=5)
+    plt.plot(df['percentage'], my_range, "o", markersize=5, color='#007ACC', alpha=0.6)
+    ax.set_xlabel('Percentage', fontsize=15, fontweight='black', color = '#333F4B')
+    ax.set_ylabel('')
+    ax.tick_params(axis='both', which='major', labelsize=12)
+    plt.yticks(my_range, df.index)
+    fig.text(-0.23, 0.96, 'Fault Type', fontsize=15, fontweight='black', color = '#333F4B')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_bounds((1, len(my_range)))
+    ax.set_xlim(1)
+    ax.spines['left'].set_position(('outward', 8))
+    ax.spines['bottom'].set_position(('outward', 5))
+    plt.savefig(name_faults, dpi=300, bbox_inches='tight')
+    body_faults='During the analyzed period the observed activations point out which faults could explain the issue. Usually more than one fault can be responsible but when agreggated the faults that are the better explanation are sorted in the following plot. Which percentage of the observed time where this faults a valid explanation is not reason enough to isolate one, but points out to the best candidates.'
+    document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
+    
+    # page 3 - probability distribution
+    name_probs = [root_folder+'new_probs.png',root_folder+'train_probs.png']
+    fig = plt.figure(figsize=(20.0, 15.0))
+    sns.heatmap(mtr_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    plt.title('Probability distribution of the different variables in last 24h (%)')
+    plt.savefig(name_probs[0], dpi=300, bbox_inches='tight')
+    fig = plt.figure(figsize=(20.0, 15.0))
+    sns.heatmap(train_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    plt.title('Probability distribution of the different variables in training data (%)')
+    plt.savefig(name_probs[1], dpi=300, bbox_inches='tight')
+    body_probs='It is important to take into account in which condition was the machine working. The following plots show the probability of each variable taking the discretized values shown, comparing them with the distribution among the training data set.'
+    document.print_page(name_probs,body_probs,'Probability Distribution Comparison')
+    
+    # page 4 - Preliminary Analysis of Model Results 1
+    name_condactiv=[root_folder+'cond_prob_activ.png']
+    names_msos=list(mtr_condactiv.keys())
+    q=int(len(names_msos)/2)
+    if len(names_msos)%2==1:
+        q=q+1
+    fig = plt.figure(figsize=(15.0, 15.0))
+    i=0
+    for name in names_msos:
+        i=i+1
+        ax1 = fig.add_subplot(q,2,i)
+        sns.heatmap(mtr_condactiv[name],cmap='Spectral',annot=template_activ_set[name], fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver')
+        ax1.title.set_text(name)         
+    fig.suptitle("Conditional Activations per Model")
+    plt.savefig(name_condactiv, dpi=300, bbox_inches='tight')
+    body_cond='One of the interpretations to the model results is to construct the conditional probability of having activation of a model when a variable takes a specific value. This information help us to understand which variables are behind the fault, being responsible for relations not accounted by the models. In each matrix the most relevant parts have been pointed out.'
+    document.print_page(name_condactiv,body_cond,'Conditional Probability of Activations')
+    
+    # page 5 - Preliminary Analysis of Model Results 2
+    name_mean=[root_folder+'mean_conf.png']
+    names_msos=list(mtr_condactiv.keys())
+    q=int(len(names_msos)/2)
+    if len(names_msos)%2==1:
+        q=q+1
+    fig = plt.figure(figsize=(15.0, 15.0))
+    i=0
+    for name in names_msos:
+        i=i+1
+        ax1 = fig.add_subplot(q,2,i)
+        sns.heatmap(mtr_mean_fault[name],cmap='Spectral',annot=template_mean_set[name], fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver')
+        ax1.title.set_text(name)         
+    fig.suptitle("Mean Confidence per Model")
+    plt.savefig(name_mean, dpi=300, bbox_inches='tight')
+    body_mean='Complementary to the information obtained with conditional probabilities of activations, the mean value of each model confidence conditioned by each variable is useful information. The previous analysis might not be as sensitive as the following plots, where we can see more subtle correlations between the fault effect and the resulting estimations.'
+    document.print_page(name_mean,body_mean,'Mean Confidence of Models')
+    
+    # page 6 - Sum up A : score by var and by MSO for 
+    # https://scentellegher.github.io/visualization/2018/10/10/beautiful-bar-plots-matplotlib.html
+    name_faults=root_folder+'feasible_faults.png'
+    fig = plt.figure(figsize=(15.0, 15.0))
+    ax_cond = fig.add_subplot(1,1,1)
+    ax_mean = fig.add_subplot(2,1,2)
+    for name in names_msos:
+        cond=[]
+        mean=[]
+        i=-1
+        for var in var_names:
+            i=i+1
+            sum_up_data[name]['ratio_score']
+    plt.savefig(name_faults, dpi=300, bbox_inches='tight')
+    body_faults='During the analyzed period the observed activations point out which faults could explain the issue. Usually more than one fault can be responsible but when agreggated the faults that are the better explanation are sorted in the following plot. Which percentage of the observed time where this faults a valid explanation is not reason enough to isolate one, but points out to the best candidates.'
+    document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
+    
+    tit='HR- SN:'+str(device)+'- v: '+version+'- '+datetime.datetime.now().isoformat()
+    document.output(root_folder+tit+'.pdf', 'F')

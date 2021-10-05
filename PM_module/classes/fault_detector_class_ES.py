@@ -798,6 +798,7 @@ class residual:
                      mov_avg=10
                      slow_break=200
                      ratio_evolution=[last_ratio]
+                     best_ho=[]
                      best_ratio=last_ratio
                      best_lamda=new_d['lamda'].max()
                      best_score=0
@@ -871,7 +872,7 @@ class residual:
                                 best_ratio=last_ratio
                                 best_lamda=new_d['lamda'].max()
                                 best_ho=ho_n
-                     if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.1:  
+                     if ((ri/best_ratio)**2)*(best_lamda/li+0.5)<1.1 and best_ho!=[]:  
                          self.hos[t]=best_ho
                          self.lamdas[t]=best_lamda
                      else:
@@ -986,8 +987,7 @@ class residual:
 
          label_num=-1
          
-         for k in range(len(variable_set)):
-
+         for k in range(len(variable_set)-1):
              k=k+1
              #print('-----> SAMPLE #'+str(k))
              sample=variable_set[k]

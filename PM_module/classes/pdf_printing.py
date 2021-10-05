@@ -5,8 +5,10 @@ Created on Thu Sep 30 12:52:36 2021
 @author: sega01
 """
 from fpdf import FPDF
+import datetime
+
 class PDF(FPDF):
-    def __init__(self,tit='',fon='Brandom_'):
+    def __init__(self,tit='',fon='Brandom_',da=''):
         super().__init__()
         self.WIDTH = 210
         self.HEIGHT = 297
@@ -14,11 +16,13 @@ class PDF(FPDF):
         self.Bottom_height = 25
         self.Lateral_borders= 10
         self.set_auto_page_break(True)
-        self.set_title(tit)
         self.add_font('Brandom_Title', '', 'BrandonGrotesqueOffice-Medium.ttf', True)
-        self.add_font('Brandom_Text', '', 'BrandonGrotesqueOffice-Medium.ttf', True)
+        self.add_font('Brandom_Text', '', 'BrandonGrotesqueOffice-Light.ttf', True)
         self.fon_title=fon+'Title'
         self.fon_text=fon+'Text'
+        if da=='':
+            self.date_creation=datetime.datetime.now().ctime()
+        self.set_title(tit+self.date_creation)
         
     def header(self):
         # Custom logo and positioning
@@ -37,6 +41,8 @@ class PDF(FPDF):
         self.set_font(self.fon_text, '', 8)
         self.set_text_color(128)
         self.cell(0, self.Bottom_height, 'Page ' + str(self.page_no()), 0, 0, 'C')
+        self.cell(0, self.Bottom_height, self.date_creation, 0, 0, 'R')
+        
 
     def page_body(self, images, text_space=0):
         # Determine how many plots there are per page and set positions
