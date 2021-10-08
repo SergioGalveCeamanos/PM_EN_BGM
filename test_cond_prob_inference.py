@@ -231,7 +231,7 @@ var_names=['ControlRegCompAC.VarFrequencyHzMSK',
  'ExtTemp']
 
 
-dates_goal = [["2021-05-19T12:45:00.000Z","2021-05-25T00:10:00.000Z"],["2021-05-27T17:45:00.000Z","2021-05-30T02:10:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
+dates_goal = [["2021-05-25T12:45:00.000Z","2021-05-26T00:10:00.000Z"]]#["2021-05-19T16:30:00.000Z","2021-05-26T08:30:00.000Z"]
 names_analysis = ['models_error', 'low_bounds', 'high_bounds',
     'activations', 'confidence', 'group_prob', 'timestamp']
 host = '137.116.224.197:9200'
@@ -732,14 +732,14 @@ for n in range(len(mso_set)):
             sum_up_data[name]['cond_prob_mean'].append(np.mean(corrected_cond[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
             sum_up_data[name]['conf_mean'].append(np.mean(corrected_mean[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
         else:
-            sum_up_data[name]['activ_acc'].append(-1)
-            sum_up_data[name]['prob_acc'].append(-1)
-            sum_up_data[name]['ratio_score'].append(-1)
-            sum_up_data[name]['interval'].append(-1)
-            sum_up_data[name]['mean_pos_dist_vs_wind'].append(-1)
-            sum_up_data[name]['conf_std_values_vs_avg'].append(-1)
-            sum_up_data[name]['cond_prob_mean'].append(-1)
-            sum_up_data[name]['conf_mean'].append(-1)
+            sum_up_data[name]['activ_acc'].append(0)
+            sum_up_data[name]['prob_acc'].append(0)
+            sum_up_data[name]['ratio_score'].append(0)
+            sum_up_data[name]['interval'].append(0)
+            sum_up_data[name]['mean_pos_dist_vs_wind'].append(0)
+            sum_up_data[name]['conf_std_values_vs_avg'].append(0)
+            sum_up_data[name]['cond_prob_mean'].append(0)
+            sum_up_data[name]['conf_mean'].append(0)
 
 # To merge, each of the major 3 indicators is taken and ranked. 
 #The average position is weighted by the possition distances between cond_prob and mean_conf combined with the rank of std_conf

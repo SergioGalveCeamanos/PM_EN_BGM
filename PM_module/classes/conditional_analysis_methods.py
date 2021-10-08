@@ -16,6 +16,13 @@ import matplotlib as mpl
 import matplotlib.font_manager as fm
 import seaborn as sns
 from matplotlib.colors import LogNorm
+import win32com.client as win32
+from socket import gethostname
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
+import json
 
 def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso_set):
     joint_activ={}
@@ -254,14 +261,14 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
                 sum_up_data[name]['cond_prob_mean'].append(np.mean(corrected_cond[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
                 sum_up_data[name]['conf_mean'].append(np.mean(corrected_mean[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
             else:
-                sum_up_data[name]['activ_acc'].append(-1)
-                sum_up_data[name]['prob_acc'].append(-1)
-                sum_up_data[name]['ratio_score'].append(-1)
-                sum_up_data[name]['interval'].append(-1)
-                sum_up_data[name]['mean_pos_dist_vs_wind'].append(-1)
-                sum_up_data[name]['conf_std_values_vs_avg'].append(-1)
-                sum_up_data[name]['cond_prob_mean'].append(-1)
-                sum_up_data[name]['conf_mean'].append(-1)
+                sum_up_data[name]['activ_acc'].append(0)
+                sum_up_data[name]['prob_acc'].append(0)
+                sum_up_data[name]['ratio_score'].append(0)
+                sum_up_data[name]['interval'].append(0)
+                sum_up_data[name]['mean_pos_dist_vs_wind'].append(0)
+                sum_up_data[name]['conf_std_values_vs_avg'].append(0)
+                sum_up_data[name]['cond_prob_mean'].append(0)
+                sum_up_data[name]['conf_mean'].append(0)
     
     # To merge, each of the major 3 indicators is taken and ranked. 
     #The average position is weighted by the possition distances between cond_prob and mean_conf combined with the rank of std_conf
@@ -333,9 +340,31 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
         
     return sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set
 
+def send_email_pdf_figs(path_to_pdf, subject, message, destination, password):
+    ## credits: http://linuxcursor.com/python-programming/06-how-to-send-pdf-ppt-attachment-with-html-body-in-python-script
 
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login('sega01luc@gmail.com',password)
+    msg = MIMEMultipart()
+
+    message = f'{message}\nSend from Hostname: {gethostname()}'
+    msg['Subject'] = subject
+    msg['From'] = 'sega01luc@gmail.com'
+    msg['To'] = destination
+    # Insert the text to the msg going by e-mail
+    msg.attach(MIMEText(message, "plain"))
+    # Attach the pdf to the msg going by e-mail
+    with open(path_to_pdf, "rb") as f:
+        #attach = email.mime.application.MIMEApplication(f.read(),_subtype="pdf")
+        attach = MIMEApplication(f.read(),_subtype="pdf")
+    attach.add_header('Content-Disposition','attachment',filename=str(path_to_pdf))
+    msg.attach(attach)
+    # send msg
+    server.send_message(msg)
+        
 # 
-def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up):
+def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result):
     root_folder='/models/output_document/'
     if not os.path.exists(root_folder):
         print(root_folder)
@@ -353,6 +382,9 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     plt.rcParams['xtick.color']='#333F4B'
     plt.rcParams['ytick.color']='#333F4B'
     
+    # page 0 - Summary page: 3 faults, 3 vars, timebands relevant 
+    
+    
     # page 1 - Health Evolution   
     name_health=root_folder+'health_evolution.png'
     fig = plt.figure(figsize=(15.0, 20.0))
@@ -360,7 +392,9 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     upper=[]
     lower=[]
     middle=[]
+    x=[]
     for i in range(len(health[ma[0]])):
+        x.append(i)
         sam=[]
         for m in ma:
             sam.append(health[m][i])
@@ -369,12 +403,16 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
         middle.append(np.mean(sam))
     check_df=[]
     t=-1
-    for m in ma:
-        t=t+1
-        plt.plot(middle,c='royalblue',linewidth=2, alpha=0.8, label='Average health evolution')
-        plt.fill_between(lower, upper, alpha=0.2,c='mediumstateblue')
-    plt.set_ylabel('Health % Indicator')
-    plt.legend()
+    plt.plot(x,middle,c='royalblue',linewidth=2, alpha=0.7, label='Average health evolution')
+    plt.fill_between(x,lower, upper, alpha=0.4,color='palegreen')
+    plt.ylabel('Health % Indicator')
+    plt.tick_params(
+    axis='x',          # changes apply to the x-axis
+    which='both',      # both major and minor ticks are affected
+    bottom=False,      # ticks along the bottom edge are off
+    top=False,         # ticks along the top edge are off
+    labelbottom=False)
+    #plt.legend()
     plt.title('Last 24h Health Evolution')
     plt.savefig(name_health, dpi=300, bbox_inches='tight')
     body_health='The Monitoring system detected a significant health decrement and this notification report is created in response. This page presents the health indicator evolution the last 24h, smoothed from 30min analysis windows.'
@@ -460,19 +498,111 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     # page 6 - Sum up A : score by var and by MSO for 
     # https://scentellegher.github.io/visualization/2018/10/10/beautiful-bar-plots-matplotlib.html
     name_faults=root_folder+'feasible_faults.png'
-    fig = plt.figure(figsize=(15.0, 15.0))
-    ax_cond = fig.add_subplot(1,1,1)
-    ax_mean = fig.add_subplot(2,1,2)
+    fig = plt.figure(figsize=(15.0, 10.0))
+    ax_cond = fig.add_subplot(3,1,1)
+    ax_mean = fig.add_subplot(3,1,2)
+    ax_ratio = fig.add_subplot(3,1,3)
+    colours=iter(CM.Spectral(np.linspace(0,1,(len(names_msos)))))
+    my_range=[]
+    for i in range(len(y_labe)):
+        my_range.append(i)
     for name in names_msos:
         cond=[]
         mean=[]
+        ratio=[]
+        c=next(colours)
         i=-1
-        for var in var_names:
+        for var in y_labe:
             i=i+1
-            sum_up_data[name]['ratio_score']
+            cond.append(sum_up_data[name]['cond_prob_mean'][i])
+            mean.append(sum_up_data[name]['conf_mean'][i])
+            ratio.append(sum_up_data[name]['ratio_score'][i])
+        cond=np.nan_to_num(cond)
+        mean=np.nan_to_num(mean)
+        ratio=np.nan_to_num(ratio)
+        ax_cond.plot(my_range, cond/max(cond), "o", markersize=9, color=c, alpha=0.7,label=name)
+        ax_mean.plot(my_range, mean/max(mean), "o", markersize=9, color=c, alpha=0.7,label=name)
+        ax_cond.plot(my_range, cond/max(cond), "-", linewidth=2, color=c, alpha=0.8)
+        ax_mean.plot(my_range, mean/max(mean), "-", linewidth=2, color=c, alpha=0.8)
+        ax_ratio.plot(my_range, ratio/max(ratio), "o", markersize=9, color=c, alpha=0.7,label=name)
+        ax_ratio.plot(my_range, ratio/max(ratio), "-", linewidth=2, color=c, alpha=0.8)
+    #ax_cond.hlines(y=my_range, xmin=0, color='#007ACC', alpha=0.2, linewidth=5)
+    #ax_mean.hlines(y=my_range, xmin=0, color='#007ACC', alpha=0.2, linewidth=5)
+    #ax_cond.set_xlabel('Variables', fontsize=15, fontweight='black', color = '#333F4B')
+    #ax_mean.set_xlabel('Variables', fontsize=15, fontweight='black', color = '#333F4B')
+    ax_cond.title.set_text('Score A: Corrected Conditional Probability.')
+    ax_mean.title.set_text('Score B: Corrected Mean Confidence')
+    ax_ratio.title.set_text('Score C: Ratio activations / probability')
+    ax_cond.set_ylabel('Score A')
+    ax_mean.set_ylabel('Score B')
+    ax_ratio.set_ylabel('Score C')
+    ax_mean.tick_params(axis='both', which='major', labelsize=12)
+    ax_cond.tick_params(axis='both', which='major', labelsize=12)
+    ax_ratio.tick_params(axis='both', which='major', labelsize=12)
+    
+    fig.text(-0.23, 0.96, 'Scores', fontsize=15, fontweight='black', color = '#333F4B')
+    ax_cond.spines['top'].set_visible(False)
+    ax_cond.spines['right'].set_visible(False)
+    #ax_cond.spines['left'].set_bounds((1, len(my_range)))
+    ax_cond.set_ylim(-0.05,1.05)
+    ax_cond.spines['left'].set_position(('outward', 8))
+    ax_cond.spines['bottom'].set_position(('outward', 5))
+    ax_mean.spines['top'].set_visible(False)
+    ax_mean.spines['right'].set_visible(False)
+    #ax_mean.spines['left'].set_bounds((1, len(my_range)))
+    ax_mean.set_ylim(-0.05,1.05)
+    ax_mean.spines['left'].set_position(('outward', 8))
+    ax_mean.spines['bottom'].set_position(('outward', 5))
+    
+    ax_ratio.spines['top'].set_visible(False)
+    ax_ratio.spines['right'].set_visible(False)
+    #ax_cond.spines['left'].set_bounds((1, len(my_range)))
+    ax_ratio.set_ylim(-0.05,1.05)
+    ax_ratio.spines['left'].set_position(('outward', 8))
+    ax_ratio.spines['bottom'].set_position(('outward', 5))
+    
+    ax_mean.legend()
+    ax_cond.legend()
+    ax_ratio.legend()
+    ax_mean.set_xticks(my_range) 
+    ax_mean.set_xticklabels(y_labe)
+    ax_cond.set_xticks(my_range) 
+    ax_cond.set_xticklabels(y_labe)
+    ax_ratio.set_xticks(my_range) 
+    ax_ratio.set_xticklabels(y_labe)
+    plt.tight_layout(h_pad=1.0)
     plt.savefig(name_faults, dpi=300, bbox_inches='tight')
-    body_faults='During the analyzed period the observed activations point out which faults could explain the issue. Usually more than one fault can be responsible but when agreggated the faults that are the better explanation are sorted in the following plot. Which percentage of the observed time where this faults a valid explanation is not reason enough to isolate one, but points out to the best candidates.'
+    body_faults='The analysis performed digests all the model results and the statistical characteristics of the gathered telemetry. As a result a set of scores is created to evaluate the effect of the hinted fault on each variable and find the best ones. The following plots show the main scores used:'
     document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
     
+    # Page 7 - resulting selection
+    name_faults=root_folder+'final_scores.png'
+    percentages = pd.Series(combined_result, index=y_labe)
+    df = pd.DataFrame({'Final Score' : percentages})
+    df = df.sort_values(by='Final Score')
+    my_range=list(range(1,len(df.index)+1))
+    fig, ax = plt.subplots(figsize=(10,7))
+    plt.hlines(y=my_range, xmin=0, xmax=df['Final Score'], color='crimson', alpha=0.2, linewidth=5)
+    plt.plot(df['Final Score'], my_range, "o", markersize=5, color='crimson', alpha=0.6)
+    ax.set_xlabel('Final Score', fontsize=15, fontweight='black', color = '#333F4B')
+    ax.set_ylabel('')
+    ax.tick_params(axis='both', which='major', labelsize=12)
+    plt.yticks(my_range, df.index)
+    fig.text(-0.23, 0.96, 'Variables', fontsize=15, fontweight='black', color = '#333F4B')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_bounds((1, len(my_range)))
+    ax.set_xlim(1)
+    ax.spines['left'].set_position(('outward', 8))
+    ax.spines['bottom'].set_position(('outward', 5))
+    plt.savefig(name_faults, dpi=300, bbox_inches='tight')
+    body_faults='The models trained that have generated an interpretation for each fault is combined with the statistical characteristics of the TCU to identify the fault that triggered this report. The fault ranked in the previous page can be reasoned with the final ranking of each variable presented here.' 
+    document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
+    
+    ################### SAVE / SEND ######################
     tit='HR- SN:'+str(device)+'- v: '+version+'- '+datetime.datetime.now().isoformat()
-    document.output(root_folder+tit+'.pdf', 'F')
+    report_file=root_folder+tit+'.pdf'
+    document.output(report_file, 'F')
+    
+    send_email_pdf_figs(report_file, subject='Notification - TCU Health Warning', message='Test service to send reports', destination='sergio.galve@lauda-ultracool.com', password='Lauda2020')
+    print(' --------- MAIL SENT WITH COMPLETE REPORT -----------')    

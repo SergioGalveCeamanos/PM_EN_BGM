@@ -23,7 +23,7 @@ import pandas as pd
 from .fault_detector_class_ES import fault_detector
 from .MSO_selector_GA import find_set_v2
 from .test_cross_var_exam import launch_analysis
-from .conditional_analysis_methods import get_cond_activ_mtrs,get_mean_std_mtrs,get_joint_tables,corrected_matrices,final_selection
+from .conditional_analysis_methods import get_cond_activ_mtrs,get_mean_std_mtrs,get_joint_tables,corrected_matrices,final_selection, launch_report_generation
 import datetime 
 import traceback
 import copy
@@ -785,12 +785,13 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         labels=[]
         for i in range(fm.bin_size):
             labels.append(i)
-        y_labels=[]
+        y_labe=fm.trad
         # call for the core matrices of the analysis
         matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
         R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
         sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
         notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
+        launch_report_generation(device,version,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbsx_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
     return notification_report
         
 def set_up_notification_baselines(device,time_start,time_stop,version="",option=[],length=24,ma=[5,10,20]):
