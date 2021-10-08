@@ -592,25 +592,25 @@ def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size
     for i in range(bin_size):
         labels.append(i)
     for var in var_names:
-        bb=[training_data_stats[var]['min']-1000*training_data_stats[var]['std']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min'])]
+        bb=[training_data_stats['min'][var]-1000*training_data_stats['std'][var]+(i/(bin_size-1))*(training_data_stats['max'][var]-training_data_stats['min'][var])]
         for i in range(bin_size-1):
-            bb.append(training_data_stats[var]['min']+(i/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))
-        bb.append(training_data_stats[var]['min']+1000*training_data_stats[var]['std']+((i+1)/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))                 
+            bb.append(training_data_stats['min'][var]+(i/(bin_size-1))*(training_data_stats['max'][var]-training_data_stats['min'][var]))
+        bb.append(training_data_stats['min'][var]+1000*training_data_stats['std'][var]+((i+1)/(bin_size-1))*(training_data_stats['max'][var]-training_data_stats['min'][var]))                 
         bins[var]= bb
     # make matrices and plot heatmaps for each MSO
-    joint_activ,joint_conf = get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,fm.mso_set)
-    
+    joint_activ,joint_conf,N_appear,joint = get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,fm.mso_set)
+
     y_labe=[]
     for var in var_names:
         y_labe.append(fm.traductor[var])
     # plot prob of each value in the timeframe selected
-    N_appear=joint_activ[var_names[0]][var_names[0]].shape[0]
+  
     matr_prbs=np.zeros([len(var_names),len(labels)])
     i=-1
     for var in var_names:
         i=i+1
         for j in labels:
-            matr_prbs[i,j]=np.round(joint_activ[var].loc[joint_activ[var][var]==j].shape[0]*100/N_appear,decimals=3)
+            matr_prbs[i,j]=np.round(joint[var].loc[joint[var][var]==j].shape[0]*100/N_appear,decimals=3)
     
     # get the respective tables
     mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
@@ -700,11 +700,13 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
     points=[]
     to_notify=False
     for m in ma:
-        slopes[m]=np.array(to_plot[m][1:])-np.array(to_plot[m][:-1])
-        ratio_slope[m]=np.abs(np.mean(slopes[m])/np.max(np.abs(slopes[m])))
-        ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
-        points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
-    
+        slopes[m]=np.abs(np.array(to_plot[m][1:])-np.array(to_plot[m][:-1]))
+        if np.max(np.abs(slopes[m]))>0:
+            ratio_slope[m]=np.abs(np.mean(slopes[m])/np.max(np.abs(slopes[m])))
+            ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
+            points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
+        else:
+            points.append(np.mean(to_plot[m]))
     # collect data --> is 60% appropiate value with new health measures ??
     if np.mean(points)>60:
         print(' [I] Healthy resolution with evaluations: '+str(points))
@@ -731,9 +733,9 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                     go_on=False
         #download the data
         #Telemetry
+
         try:
             body={'device':device,'names':names,'times':[],'aggSeconds':aggSeconds}
-            #jobs = []
             proc=int(multiprocessing.cpu_count())
             manager = multiprocessing.Manager()
             shared_list=manager.list()
@@ -751,8 +753,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                         jobs.append(p)
                     for q in jobs:
                         q.join()
-                    sub_batch=[]
-                    
+                    sub_batch=[] 
             first=True
             for df in shared_list:
                 if first:
@@ -765,7 +766,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         print('All Data Collected')
         print(data)
         names_fields=['activations','confidence','timestamp','group_prob']
-        body={'device':str(device),'trained_version':version,'names':names_fields,'times':[time_start,time_stop],'group_prob':1}
+        body={'device':str(device),'trained_version':version,'times':[time_start,time_stop],'group_prob':1} #'names':names_fields,
         try:
             r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
             # here data will be a list of dicts, in each one all the fields separated by mso
@@ -773,9 +774,9 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         except requests.exceptions.RequestException as e:  # This is the correct syntax
             traceback.print_exc()
             raise SystemExit(e)
-    
         activations=[]
         confidences=[]
+        timestamps=all_data[0]['timestamp']
         for i in range(len(fm.mso_set)):
             activations.append(all_data[i][names_fields[0]])
             confidences.append(all_data[i][names_fields[1]])
@@ -785,9 +786,10 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         labels=[]
         for i in range(fm.bin_size):
             labels.append(i)
-        y_labe=fm.trad
+        data=data[data['timestamp'].isin(timestamps)]   
+        data=data[list(fm.traductor.keys())]
         # call for the core matrices of the analysis
-        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
+        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,list(fm.traductor.keys()),bin_size=fm.bin_size)
         R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
         sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
         notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
@@ -1112,7 +1114,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             fault_manager.test_data.to_csv(file_test)
             fault_manager.kde_data.to_csv(file_kde)
             fault_manager.full_train_data.to_csv(file_full)
-            fault_manager.training_data_stats=fault_manager.training_data.transpose().describe()
+            fault_manager.training_data_stats=fault_manager.training_data.describe().transpose()
             print('[I] Saved sampled and filtered data')
             print('[I] Filtered Training Data')
             print(fault_manager.training_data)

@@ -16,7 +16,6 @@ import matplotlib as mpl
 import matplotlib.font_manager as fm
 import seaborn as sns
 from matplotlib.colors import LogNorm
-import win32com.client as win32
 from socket import gethostname
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -27,12 +26,11 @@ import json
 def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso_set):
     joint_activ={}
     for var in var_names:
-        to_pd={var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels)}
+        to_pd={var:pd.cut(telemetry[var].values,bins[var],labels=labels)}
         for i in range(len(mso_set)):
             name='MSO_'+str(i)
             to_pd[name]=activations[i]
         joint_activ[var]=pd.DataFrame(to_pd)
-      
     # get the conditional probabilities for activations only (each var and each MSO)
     N_appear=joint_activ[var_names[0]][var_names[0]].shape[0]
     joint_results_activ={}
@@ -63,13 +61,14 @@ def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso
     #create the joint tables
     joint={}
     for var in var_names:
-        to_pd={var:pd.cut(telemetry[var].values[:,0],bins[var],labels=labels)}
+        to_pd={var:pd.cut(telemetry[var].values[:],bins[var],labels=labels)}
         for i in range(len(mso_set)):
             name='MSO_'+str(i)
             to_pd[name]=confidences[i]
         joint[var]=pd.DataFrame(to_pd)
         
     # get the conditional probabilities for activations only (each var and each MSO)
+
     N_appear=joint[var_names[0]][var_names[0]].shape[0]
     joint_results={}
     for var in var_names:
@@ -88,13 +87,12 @@ def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso
                     interval=str(np.round(bins[var][j],decimals=2))+' to '+str(np.round(bins[var][j+1],decimals=2))
                 joint_results[var][name][interval]={}
                 joint_results[var][name][interval]['Legend_index']=j
-                
                 subset=joint[var].loc[joint[var][var]==j]
                 joint_results[var][name][interval]['C_mean']=subset[name].describe()['mean']
                 joint_results[var][name][interval]['P_var']=joint[var].loc[joint[var][var]==j].shape[0]/N_appear
                 joint_results[var][name][interval]['C_std']=subset[name].describe()['std']
                 
-    return joint_results_activ,joint_results
+    return joint_results_activ,joint_results,N_appear,joint
     
 def get_cond_activ_mtrs(joint_results,mso_set,labels,var_names,bins):
     mtr_condactiv={}
@@ -102,6 +100,7 @@ def get_cond_activ_mtrs(joint_results,mso_set,labels,var_names,bins):
     for n in range(len(mso_set)):       
         name='MSO_'+str(n)
         matr=np.zeros([len(var_names),len(labels)])
+        mtr_perc_activ[name]=np.zeros([len(var_names),len(labels)])
         i=-1
         for var in var_names:
             i=i+1
