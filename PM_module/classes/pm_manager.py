@@ -29,6 +29,7 @@ import traceback
 import copy
 import multiprocessing
 
+NEW_TIMEOUT=600 #seconds
 #def get_model(filename,id_device):
     #if id_device in model_dictionary:
         #return model_dictionary[id_device]
@@ -95,7 +96,7 @@ def upload_results(documents,task_type):
     http_dic={'analysis':'http://db_manager:5001/upload-analysis','configuration':'http://db_manager:5001/upload-configuration','forecasts':'http://db_manager:5001/upload-forecast','probabilities':'http://db_manager:5001/upload-probabilities','report':'http://db_manager:5001/upload-report','notification':'http://db_manager:5001/upload-notification'}
     error_dic={'analysis':'[¡] Error uploading model analysis in sample #','configuration':' [!] Error uploading Configuration','forecasts':' [!] Error uploading Forecast','probabilities':' [!] Error uploading Probabilities','report':' [!] Error uploading report','notification':' [!] Error uploading notification report'}
     try:
-        r = requests.post(http_dic[task_type],json = documents)
+        r = requests.post(http_dic[task_type],json = documents,timeout=NEW_TIMEOUT)
     except:
         print(error_dic[task_type])
         traceback.print_exc()
@@ -116,7 +117,7 @@ def get_analysis(device,time_start,time_stop,version="",aggSeconds=1,option=[],e
         # headers=headers
         print(' HTTP message Body: ')
         print(body)
-        r = requests.post('http://db_manager:5001/collect-data',json = body) # 'http://db_manager:5001/collect-data'
+        r = requests.post('http://db_manager:5001/collect-data',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
         data=r.json()
     except:  # This is the correct syntax
         print(' [!] Error gathering Telemetry')
@@ -275,7 +276,7 @@ def load_config(device,current_time,msos,version=""):
         new_conf['alpha'].append(float(0.5))
         new_conf['forecast_activation_prob'].append(float(0.01))
         new_conf['forecast_activation_time'].append("INITIAL_CONFIG_DOC")
-    r = requests.post('http://db_manager:5001/upload-configuration',json = new_conf)
+    r = requests.post('http://db_manager:5001/upload-configuration',json = new_conf,timeout=NEW_TIMEOUT)
     return new_conf
 
 # get forecast and the evaluation against the boundaries probability distribution 
@@ -288,7 +289,7 @@ def get_forecast(device,current_time,agg_sec=5,version=""):
     names=['forecast_window','sample_size','alpha']
     body={'device':str(device),'trained_version':version,'names':names,'times':current_time}
     try:
-        r = requests.post('http://db_manager:5001/collect-configuration',json = body) # 'http://db_manager:5001/collect-data'
+        r = requests.post('http://db_manager:5001/collect-configuration',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
         config=r.json()
     except:  # Extra details:  requests.exceptions.RequestException as e
         traceback.print_exc()
@@ -308,7 +309,7 @@ def get_forecast(device,current_time,agg_sec=5,version=""):
     names=['models_error','high_bounds','low_bounds']
     body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time]}
     try:
-        r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
+        r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
         # here data will be a list of dicts, in each one all the fields separated by mso
         all_data=r.json()
     except requests.exceptions.RequestException as e:  # This is the correct syntax
@@ -399,19 +400,18 @@ def get_forecast(device,current_time,agg_sec=5,version=""):
     #upload config --> including evaluation from forecast
     
 def get_probability(device,current_time,start_time=[],version=""):
+
     file, folder = file_location(device,version)
-    fm=load_model(file, folder)
-    # here we just want to hit the closest config to a given date         
+    fm=load_model(file, folder) # here we just want to hit the closest config to a given date         
     if start_time==[]:
         names=['forecast_window','sample_size','alpha']
         body={'device':str(device),'trained_version':version,'names':names,'times':current_time}
         try:
-            r = requests.post('http://db_manager:5001/collect-configuration',json = body) # 'http://db_manager:5001/collect-data'
+            r = requests.post('http://db_manager:5001/collect-configuration',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
             config=r.json()
         except:  # Extra details:  requests.exceptions.RequestException as e
             traceback.print_exc()
             config=load_config(device,current_time,len(fm.mso_set))
-            #raise SystemExit(e) 
         if config==[]:
             config=load_config(device,current_time,len(fm.mso_set))
         current_dt=datetime.datetime.strptime(current_time, '%Y-%m-%dT%H:%M:%S.%fZ')
@@ -422,11 +422,11 @@ def get_probability(device,current_time,start_time=[],version=""):
         start=start_time
     #file, folder = file_location(device)    
     #fm=load_model(file, folder)
+
     names=['activations','confidence','timestamp','group_prob']
     body={'device':str(device),'trained_version':version,'names':names,'times':[start,current_time],'group_prob':1}
     try:
-        r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
-        # here data will be a list of dicts, in each one all the fields separated by mso
+        r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # here data will be a list of dicts, in each one all the fields separated by mso
         all_data=r.json()
     except requests.exceptions.RequestException as e:  # This is the correct syntax
         traceback.print_exc()
@@ -464,7 +464,7 @@ def get_probability(device,current_time,start_time=[],version=""):
     else:
         body={'device':str(device),'trained_version':version,'times':current_time,'faults':fm.faults}
         try:
-            r = requests.post('http://db_manager:5001/collect-last-priors',json = body) # 'http://db_manager:5001/collect-data'
+            r = requests.post('http://db_manager:5001/collect-last-priors',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
             priors=r.json()
         except:  # Extra details:  requests.exceptions.RequestException as e
             traceback.print_exc()
@@ -586,6 +586,7 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
 
 # generate analysis over given data for conditional analysis
 def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size=100):
+
     training_data_stats=fm.training_data_stats
     bins={}
     labels=[]
@@ -658,9 +659,11 @@ def key_strokes(fm,activations):
 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
 def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12]):
+  
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     #get initial date
+
     next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
     next_t=next_t.isoformat()
     time_start=next_t[:(len(next_t)-3)]+'Z'
@@ -670,18 +673,17 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
     if int(device)==71471 or int(device)==74124:
         aggSeconds=1
     ########################################################
+
     body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
-    #headers = {'Content-Type': 'application/json'}
     try:
-        # headers=headers
         print(' HTTP message Body: ')
         print(body)
-        r = requests.post('http://db_manager:5001/collect-reports',json = body) # 'http://db_manager:5001/collect-data'
+        r = requests.post('http://db_manager:5001/collect-reports',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
         data=r.json()
     except:  # This is the correct syntax
         print(' [!] Error gathering Telemetry')
     
-    # check if the reports are to be concern a generate a notification analysis
+    # check if the reports are to be concern a generate a notification analysis  
     health=[]
     labels=[]
     for i in data:
@@ -708,7 +710,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         else:
             points.append(np.mean(to_plot[m]))
     # collect data --> is 60% appropiate value with new health measures ??
-    if np.mean(points)>60:
+    if np.mean(points)>85:
         print(' [I] Healthy resolution with evaluations: '+str(points))
         notification_report='All clear'
     else:
@@ -765,30 +767,55 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             raise SystemExit(e)
         print('All Data Collected')
         print(data)
-        names_fields=['activations','confidence','timestamp','group_prob']
-        body={'device':str(device),'trained_version':version,'times':[time_start,time_stop],'group_prob':1} #'names':names_fields,
-        try:
-            r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
-            # here data will be a list of dicts, in each one all the fields separated by mso
-            all_data=r.json()
-        except requests.exceptions.RequestException as e:  # This is the correct syntax
-            traceback.print_exc()
-            raise SystemExit(e)
+
         activations=[]
         confidences=[]
-        timestamps=all_data[0]['timestamp']
-        for i in range(len(fm.mso_set)):
-            activations.append(all_data[i][names_fields[0]])
-            confidences.append(all_data[i][names_fields[1]])
-        
+        first=True
+        for time in time_set:
+            names_fields=['activations','confidence','timestamp','group_prob']
+            body={'device':str(device),'trained_version':version,'times':[time[0],time[1]],'group_prob':1} #'names':names_fields,
+            try:
+                r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # here data will be a list of dicts, in each one all the fields separated by mso
+                all_data=r.json()
+            except requests.exceptions.RequestException as e:  # This is the correct syntax
+                traceback.print_exc()
+                raise SystemExit(e)
+            if first:
+                timestamps=all_data[0]['timestamp']
+                for i in range(len(fm.mso_set)):
+                    activations.append(all_data[i][names_fields[0]])
+                    confidences.append(all_data[i][names_fields[1]])
+                first=False
+            else:
+                timestamps=timestamps+all_data[0]['timestamp']
+                for i in range(len(fm.mso_set)):
+                    activations[i]=activations[i]+all_data[i][names_fields[0]]
+                    confidences[i]=confidences[i]+all_data[i][names_fields[1]]
+    
         # Get all the fault feasibility 
         heard_faults=key_strokes(fm,activations)
         labels=[]
         for i in range(fm.bin_size):
             labels.append(i)
-        data=data[data['timestamp'].isin(timestamps)]   
-        data=data[list(fm.traductor.keys())]
-        # call for the core matrices of the analysis
+        data=data[data['timestamp'].isin(timestamps)]   # make sure the same samples are selected
+        dic_res={'timestamp':timestamps}
+        for i in range(len(fm.mso_set)):
+            n1='acti_'+str(i)
+            n2='conf_'+str(i)
+            dic_res[n1]=activations[i]
+            dic_res[n2]=confidences[i]
+        df_res=pd.DataFrame(dic_res)
+        df_res=df_res[df_res['timestamp'].isin(data['timestamp'])]   
+ 
+        activations=[]
+        confidences=[]
+        timestamps=df_res['timestamp'].values
+        for i in range(len(fm.mso_set)):
+            n1='acti_'+str(i)
+            n2='conf_'+str(i)
+            activations.append(df_res[n1].values)
+            confidences.append(df_res[n2].values)
+        data=data[list(fm.traductor.keys())] # call for the core matrices of the analysis
         matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,list(fm.traductor.keys()),bin_size=fm.bin_size)
         R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
         sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
@@ -796,36 +823,44 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         launch_report_generation(device,version,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbsx_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
     return notification_report
         
-def set_up_notification_baselines(device,time_start,time_stop,version="",option=[],length=24,ma=[5,10,20]):
+def set_up_notification_baselines(device,time_set,version="",option=[],length=24):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
+
     telemetry=fm.full_train_data
     names=['activations','confidence','timestamp','group_prob']
-    body={'device':str(device),'trained_version':version,'names':names,'times':[time_start,time_stop],'group_prob':1}
-    try:
-        r = requests.post('http://db_manager:5001/collect-model-error',json = body) # 'http://db_manager:5001/collect-data'
-        # here data will be a list of dicts, in each one all the fields separated by mso
-        all_data=r.json()
-    except requests.exceptions.RequestException as e:  # This is the correct syntax
-        traceback.print_exc()
-        raise SystemExit(e)
-
     activations=[]
     confidences=[]
     times=[]
     for i in range(len(fm.mso_set)):
-        activations.append(all_data[i][names[0]])
-        confidences.append(all_data[i][names[1]])
-        times.append(all_data[i][names[2]])
+        activations.append([])
+        confidences.append([])
+    for t in time_set:
+        body={'device':str(device),'trained_version':version,'names':names,'times':t,'group_prob':1}
+        try:
+            r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
+            all_data=r.json()
+            times=times+all_data[i][names[2]]
+            for i in range(len(fm.mso_set)):
+                activations[i]=activations[i]+all_data[i][names[0]]
+                confidences[i]=confidences[i]+all_data[i][names[1]]  
+            r=None
+            all_data=None
+        except requests.exceptions.RequestException as e:  # This is the correct syntax
+            traceback.print_exc()
+            raise SystemExit(e)
+
     # [!!!] check that the data is the same in full_train_data vs the one obtained for activations and so ...
     # call for the core matrices of the analysis
-    names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
-    matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current=conditional_analysis(fm,fm.training_data,activations,confidences,names,bin_size=fm.bin_size)
+    names,times_b=fm.get_data_names(option='CarolusRex',times=time_set)
+    names=names.remove(fm.filt_parameter)
+    data_selected=fm.full_train_data[fm.full_train_data['timestamp'].isin(times)]
+    matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe=conditional_analysis(fm,data_selected,activations,confidences,names,bin_size=fm.bin_size)
     return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
     
 def collect_timeband(time,machine,names,aggSeconds,shared_list):
     body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
-    r = requests.post('http://db_manager:5001/collect-data',json = body) # 'http://db_manager:5001/collect-data'
+    r = requests.post('http://db_manager:5001/collect-data',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
     dd=r.json()
     shared_list.append(pd.DataFrame(dd))
 
@@ -970,7 +1005,7 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
 def get_data_batch(body,time,shared_list):
     try:
         body['times']=[time]
-        r = requests.post('http://db_manager:5001/collect-data',json = body)
+        r = requests.post('http://db_manager:5001/collect-data',json = body,timeout=NEW_TIMEOUT)
         dd=r.json()
         shared_list.append(pd.DataFrame(dd))
     except:
@@ -1167,14 +1202,6 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
         fi.close()
         fault_manager.Load(folder)"""
         #After the training of each residual they are stored but not loaded
-        #fault_manager=load_model(file, folder)
-        t_a=datetime.datetime.now()
-        #SM=fault_manager.create_SM(samples=600)
-        #print(SM)
-        #fault_manager.load_entropy()
-        #fault_manager.create_FSSM(SM)
-        t_b=datetime.datetime.now()
-        dif=t_b-t_a
         fault_manager.version=version
         fault_manager.Save(folder,file)
         
@@ -1191,7 +1218,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
             else:
                 sub_batch.append(time)
                 for t in sub_batch:
-                    p = multiprocessing.Process(target=train_and_upload, args=(machine,time,version,aggSeconds))
+                    p = multiprocessing.Process(target=train_and_upload, args=(machine,t,version,aggSeconds))
                     p.start()
                     jobs.append(p)
                 for q in jobs:
@@ -1199,12 +1226,13 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
                 sub_batch=[]
 
         # with all training range prepared we do the baseline conditional analysis
-        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(machine,time_set[0][0],time_set[-1][1],version="",option=[],length=24,ma=[5,10,20])
+        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(machine,time_set[0][0],time_set[-1][1],version=version,option=[],length=24)
         #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version
-        fault_manager.Save(folder,file)
         fault_manager.data_creation=datetime.datetime.now()
+        fault_manager.Save(folder,file)
+        
         response={'filename':file,'training_data shape':fault_manager.training_data.shape,'training result':response_dic,'times_training':time_set} #,'FSSM':fault_manager.FSSM
     else:
         response={'Model already exists':True}

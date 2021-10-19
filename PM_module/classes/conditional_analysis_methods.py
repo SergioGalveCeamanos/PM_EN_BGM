@@ -30,6 +30,7 @@ def get_joint_tables(var_names,telemetry,bins,activations,confidences,labels,mso
         for i in range(len(mso_set)):
             name='MSO_'+str(i)
             to_pd[name]=activations[i]
+            print(str(len(to_pd[name]))+str(to_pd[var]))
         joint_activ[var]=pd.DataFrame(to_pd)
     # get the conditional probabilities for activations only (each var and each MSO)
     N_appear=joint_activ[var_names[0]][var_names[0]].shape[0]

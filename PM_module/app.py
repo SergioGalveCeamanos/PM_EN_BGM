@@ -72,10 +72,10 @@ def build_model(data):
     response = set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,sensor_eqs,time_bands,filt_val,filt_param,filt_delay_cap,main_ca,max_ca_jump,cont_cond,preferent=preferent,version=version,retrain=True,aggSeconds=aggS,sam=samples,mso_set=mso_set,filter_stab=filter_stab,traductor=traductor)
     return response
 # PRIORITY CRITERIA: Forecast and Probabilities ahead of Analysis (TO BE IMPLEMENTED)
-def get_task(file):
+def get_task(file_tasks):
     # no indication of who is accesing the file ... to be improved
     try:
-        table=pd.read_csv(file,index_col=0)
+        table=pd.read_csv(file_tasks,index_col=0)
         todo=table.loc[table['status']=='ToDo']
         if todo.shape[0]==0:
             return 'No task available'
@@ -89,7 +89,7 @@ def get_task(file):
             task['type']=todo['type'].iloc[0]
             task['version']=todo['version'].iloc[0]
             table.loc[(table['device']==task['device'])&(table['date']==task['date']), 'status']= 'Processing'
-            table.to_csv(file)
+            table.to_csv(file_tasks)
             return task
     except:
         print('Error loading the table ...')
@@ -97,7 +97,7 @@ def get_task(file):
 
 def cycle(task):
     print(task)
-    file='/models/tasks.csv'
+    file_tasks='/models/tasks.csv'
     n_model='/models/new_model.pkl'
     #print('--> Start of cycle')
     r=True
@@ -149,7 +149,6 @@ def cycle(task):
                 print('The retrain is completed for unit '+str(task['device']))  
                     
             elif task['type']=='build_model':
-
                 n_model='/models/'+str(task['device'])+task['version']+'.pkl'
                 filehandler = open(n_model, 'rb') 
                 data = pickle.load(filehandler)
@@ -199,9 +198,9 @@ def cycle(task):
         else:
             text='Error uploading data'
         try:
-            table=pd.read_csv(file,index_col=0)
+            table=pd.read_csv(file_tasks,index_col=0)
             table.loc[(table['device']==task['device'])&(table['date']==task['date']), 'status']= text 
-            table.to_csv(file)
+            table.to_csv(file_tasks)
         except:
             print('Error updating status ...')
             
@@ -231,8 +230,8 @@ def new_model():
 if __name__ == '__main__':
     # LOAD MODELS IN DICTIONARY
     #app.run(port=5002,threaded=True)
-    file='/models/tasks.csv'
-    paralels=4  
+    file_tasks='/models/tasks.csv'
+    paralels=3  
     while True:
          room=True
          inem=False
@@ -241,7 +240,7 @@ if __name__ == '__main__':
          print(' [S] Launch of PM processing')
          while room and i<paralels:
              i=i+1
-             task=get_task(file)
+             task=get_task(file_tasks)
              if task!='No task available':
                  p = multiprocessing.Process(target=cycle, args=([task]))
                  p.start()

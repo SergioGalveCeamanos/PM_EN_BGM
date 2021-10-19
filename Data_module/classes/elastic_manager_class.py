@@ -11,6 +11,7 @@ import traceback
 
 class elastic_manager:
      def __init__(self, host, device,s=100,ag_time=5):
+        self.timeout=600              # Just to be sure
         self.host=host                 # The address for the elastic cluster, currently: '52.169.220.43:9200'
         self.device=device             # the machine SN that will be used for filtering, for example the 69823
         self.root_index='telemetry_'   # The base to form all the names of other roots, as for example: telemetry_122020 (December of 2020)
@@ -20,7 +21,7 @@ class elastic_manager:
         self.names_analysis=['models_error', 'low_bounds', 'high_bounds', 'activations', 'confidence','timestamp'] # the name of the main fields loaded appart from device and timestamp (??)
          
      def connect(self):
-        self.client = Elasticsearch(hosts=[self.host])
+        self.client = Elasticsearch(hosts=[self.host],timeout=self.timeout)
         #print(self.client.info())
          
      # in order to retrieve the right cluster, given the nomenclature as: telemetry_XXYYYY (XX=month, YYYY=year)

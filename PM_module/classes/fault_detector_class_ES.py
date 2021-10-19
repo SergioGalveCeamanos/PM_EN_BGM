@@ -1674,6 +1674,7 @@ class fault_detector:
             
             
      def prior_update(self, activations, confidences, groups, priori=[],alpha=[0.5],up_lim_prior=0.5,ma=20,k_factor=0.25,option='GG'):#'SensitivityWeight'     
+
          if priori==[]:
              priori=self.priori
          prior_evolution=[]
@@ -1702,37 +1703,31 @@ class fault_detector:
                  activ_sample.append(activations[l][i])
                  if activations[l][i]==1:
                      fault=True
-             #print(' Activations: '+str(activ))
-             #if an anomally is detected ...  
-             if fault:
-                 #first you get the probability of this marking for each fault
-                 for j in range(len(self.faults)):
-                     p_phi.append(0)
-                     zvf=1
-                     tot=0
-                     for l in range(len(self.mso_set)):
-                         if ((self.fault_signature_matrix[j][l]==0) and (activations[l][i]==1)):
-                             zvf=0
-                         if self.fault_signature_matrix[j][l]==1:
-                             tot=tot+1
-                             p_phi[j]=p_phi[j]+confidences[l][i]*abs(self.fault_mso_sensitivity[self.mso_set[l]][self.faults[f_keys[j]]][gr])
-                     if zvf==1:
-                         p_phi[j]=p_phi[j]/tot 
-                     elif tot>0:
-                         p_phi[j]=p_phi[j]*0.5/tot 
-                         #print([j,tot,p_phi[j]])
-                 #then you compute the posterior probabilities (being the new prior probabilities)
+             if fault: #if an anomally is detected ...
                  try:
+                     for j in range(len(self.faults)): #first you get the probability of this marking for each fault
+                         p_phi.append(0)
+                         zvf=1
+                         tot=0
+                         for l in range(len(self.mso_set)):
+                             if ((self.fault_signature_matrix[j][l]==0) and (activations[l][i]==1)):
+                                 zvf=0
+                             if self.fault_signature_matrix[j][l]==1:
+                                 tot=tot+1
+                                 p_phi[j]=p_phi[j]+confidences[l][i]*abs(self.fault_mso_sensitivity[self.mso_set[l]][self.faults[f_keys[j]]][gr])
+                         if zvf==1:
+                             p_phi[j]=p_phi[j]/tot 
+                         elif tot>0:
+                             p_phi[j]=p_phi[j]*0.5/tot 
+                     #then you compute the posterior probabilities (being the new prior probabilities)
                      base=0
-                     for j in range(len(self.faults)):
-                         # we test to work without bayesian convergence
+                     for j in range(len(self.faults)): # we test to work without bayesian convergence
                          base=base+ma_prior[j]*p_phi[j]
                      to_weight=[]
                      for j in range(len(self.faults)):
                          s=(p_phi[j]*ma_prior[j])/base
                          to_weight.append(s)
-                     # We pass the information to the function to evaluate the probabilities using the FSSM (and maybe FSOM)
-                     to_activate=[]
+                     to_activate=[] # We pass the information to the function to evaluate the probabilities using the FSSM (and maybe FSOM)
                      for l in range(len(self.mso_set)):
                          to_activate.append(activations[l][i])
                      test_weights.append(to_weight)
@@ -1749,11 +1744,10 @@ class fault_detector:
                          for j in range(len(self.faults)):     
                              prior_evolution[j].append(s[j]/base)
                  except:
-                     #traceback.print_exc()
+                     traceback.print_exc()
                      print('  [!] Error preparing sample for Prior Evolution')
                      fault=False
-             # in case no anomally is detected get the prior probabilities close to the original
-             if fault==False:
+             if fault==False: # in case no anomally is detected get the prior probabilities close to the original
                  base=0
                  s=[]
                  for j in range(len(self.faults)):
