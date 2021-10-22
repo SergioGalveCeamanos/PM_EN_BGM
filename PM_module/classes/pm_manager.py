@@ -616,7 +616,7 @@ def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size
     # get the respective tables
     mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
     mtr_mean_current,mtr_std_current=get_mean_std_mtrs(joint_conf,fm.mso_set,labels,var_names,bins)
-    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe, bins
 
 # use the sound analogy to analyze the faults feasible given the registered activations only
 def key_strokes(fm,activations):
@@ -663,17 +663,18 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     #get initial date
-
+if True:
     next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
     next_t=next_t.isoformat()
     time_start=next_t[:(len(next_t)-3)]+'Z'
     names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+    names.remove(fm.filt_parameter)
     #names.append(fm.target_var)
     ######## NOT LIKE THIS --> MUST BE CHANGED #############
     if int(device)==71471 or int(device)==74124:
         aggSeconds=1
     ########################################################
-
+if True:
     body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
     try:
         print(' HTTP message Body: ')
@@ -735,7 +736,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                     go_on=False
         #download the data
         #Telemetry
-
+if True:
         try:
             body={'device':device,'names':names,'times':[],'aggSeconds':aggSeconds}
             proc=int(multiprocessing.cpu_count())
@@ -767,7 +768,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             raise SystemExit(e)
         print('All Data Collected')
         print(data)
-
+if True:
         activations=[]
         confidences=[]
         first=True
@@ -777,22 +778,24 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             try:
                 r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # here data will be a list of dicts, in each one all the fields separated by mso
                 all_data=r.json()
+                if all_data!=[]:
+                    if first:
+                        timestamps=all_data[0]['timestamp']
+                        for i in range(len(fm.mso_set)):
+                            activations.append(all_data[i][names_fields[0]])
+                            confidences.append(all_data[i][names_fields[1]])
+                        first=False
+                    else:
+                        timestamps=timestamps+all_data[0]['timestamp']
+                        for i in range(len(fm.mso_set)):
+                            activations[i]=activations[i]+all_data[i][names_fields[0]]
+                            confidences[i]=confidences[i]+all_data[i][names_fields[1]]
             except requests.exceptions.RequestException as e:  # This is the correct syntax
                 traceback.print_exc()
                 raise SystemExit(e)
-            if first:
-                timestamps=all_data[0]['timestamp']
-                for i in range(len(fm.mso_set)):
-                    activations.append(all_data[i][names_fields[0]])
-                    confidences.append(all_data[i][names_fields[1]])
-                first=False
-            else:
-                timestamps=timestamps+all_data[0]['timestamp']
-                for i in range(len(fm.mso_set)):
-                    activations[i]=activations[i]+all_data[i][names_fields[0]]
-                    confidences[i]=confidences[i]+all_data[i][names_fields[1]]
     
         # Get all the fault feasibility 
+if True:
         heard_faults=key_strokes(fm,activations)
         labels=[]
         for i in range(fm.bin_size):
@@ -806,7 +809,6 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             dic_res[n2]=confidences[i]
         df_res=pd.DataFrame(dic_res)
         df_res=df_res[df_res['timestamp'].isin(data['timestamp'])]   
- 
         activations=[]
         confidences=[]
         timestamps=df_res['timestamp'].values
@@ -816,47 +818,75 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             activations.append(df_res[n1].values)
             confidences.append(df_res[n2].values)
         data=data[list(fm.traductor.keys())] # call for the core matrices of the analysis
-        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm =conditional_analysis(fm,data,activations,confidences,list(fm.traductor.keys()),bin_size=fm.bin_size)
+if True:    
+        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm, bins =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
         R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
-        sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,fm.bin_size,activations)
+        sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,bins,activations)
         notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
-        launch_report_generation(device,version,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbsx_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
+        launch_report_generation(device,version,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbs,x_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
     return notification_report
+  
+def get_analysis(body,shared_list):
+    try:
+        r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) 
+        shared_list[body['times'][0]]=r.json()
+    except:
+        print(' [E] A time band gathering analysis data was not properly received: ')
+        print(body)
+        traceback.print_exc()
         
 def set_up_notification_baselines(device,time_set,version="",option=[],length=24):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
-
+if True:
     telemetry=fm.full_train_data
     names=['activations','confidence','timestamp','group_prob']
     activations=[]
     confidences=[]
     times=[]
+    j=0
     for i in range(len(fm.mso_set)):
         activations.append([])
         confidences.append([])
-    for t in time_set:
-        body={'device':str(device),'trained_version':version,'names':names,'times':t,'group_prob':1}
+    for time in time_set:
+        j=j+1
+        body={'device':str(device),'trained_version':version,'names':names,'times':time,'group_prob':1}
         try:
-            r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
+            r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) 
             all_data=r.json()
-            times=times+all_data[i][names[2]]
+            times=times+all_data[0][names[2]]
             for i in range(len(fm.mso_set)):
                 activations[i]=activations[i]+all_data[i][names[0]]
                 confidences[i]=confidences[i]+all_data[i][names[1]]  
-            r=None
-            all_data=None
-        except requests.exceptions.RequestException as e:  # This is the correct syntax
+            print(str(j)+' / '+str(len(time_set)))
+        except:
+            print(' [E] A time band gathering analysis data was not properly received: ')
+            print(time)
             traceback.print_exc()
-            raise SystemExit(e)
-
     # [!!!] check that the data is the same in full_train_data vs the one obtained for activations and so ...
     # call for the core matrices of the analysis
+if True:
     names,times_b=fm.get_data_names(option='CarolusRex',times=time_set)
-    names=names.remove(fm.filt_parameter)
+    names.remove(fm.filt_parameter)
     data_selected=fm.full_train_data[fm.full_train_data['timestamp'].isin(times)]
-    matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe=conditional_analysis(fm,data_selected,activations,confidences,names,bin_size=fm.bin_size)
-    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current
+    j=-1
+    to_df={'timestamp':times}
+    for i in range(len(fm.mso_set)):
+        name='mso'+str(i)
+        to_df[name+'act']=activations[i]
+        to_df[name+'con']=confidences[i]
+    df_analysis=pd.DataFrame(to_df)
+    matching=df_analysis[df_analysis['timestamp'].isin(data_selected['timestamp'])]
+if True:
+    times=matching['timestamp'].values   
+    activations=[]
+    confidences=[]
+    for i in range(len(fm.mso_set)):
+        name='mso'+str(i)
+        activations.append(matching[name+'act'].values)
+        confidences.append(matching[name+'con'].values)
+    matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe, bins=conditional_analysis(fm,data_selected,activations,confidences,names,bin_size=fm.bin_size)
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, bins
     
 def collect_timeband(time,machine,names,aggSeconds,shared_list):
     body={'device':machine,'names':names,'times':[time],'aggSeconds':aggSeconds}
@@ -1226,7 +1256,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
                 sub_batch=[]
 
         # with all training range prepared we do the baseline conditional analysis
-        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(machine,time_set[0][0],time_set[-1][1],version=version,option=[],length=24)
+        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current, fm.bins = set_up_notification_baselines(machine,time_set,version=version,option=[],length=24)
         #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version

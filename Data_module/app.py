@@ -13,13 +13,15 @@ from config import Config
 from classes.elastic_manager_class import elastic_manager
 import traceback
 
-host='137.116.224.197:9200'
+host='https://elastic-telemetrydb-prod-weu-001.es.westeurope.azure.elastic-cloud.com:9243'
+user ='laudaelastic'
+pwd = 'BBQvlxaXFKHldJjQ3At1'
 machine=00000
 
 # start the object
 app = Flask(__name__)
 app.config.from_object(Config)
-em=elastic_manager(host,machine)
+em=elastic_manager(host,machine,user,pwd)
 em.connect()
 
 @app.route('/collect-data', methods=['POST'])
@@ -50,6 +52,7 @@ def collect_model_error():
     print(request)
     data = request.get_json()
     print(data)
+if True:
     device = data['device']
     times = data['times']
     version = data['trained_version']

@@ -175,8 +175,9 @@ def moving_average_variables(matr,matr_prbs,var_names,wind_ratio=0.20):
 # generate analysis corrected by baseline, intermediate corrected matrices
 def corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault):
     # R weights to consider how abnormal is the appearance because if it was very common in training the baseline should be considered more
-    R=np.clip(np.nan_to_num(0.5+np.sqrt(fm.matr_prbs/matr_prbs)),0.5,1.5)
+    R=np.clip(np.nan_to_num(0.5+np.sqrt(fm.matr_prbs/(matr_prbs+0.00001))),0.5,1.5)
     # get the corrected matrices by substracting the baseline values weighted by R
+
     corrected_cond={}
     corrected_mean={}
     corrected_std={}
@@ -184,9 +185,9 @@ def corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_f
         name='MSO_'+str(n)
         corrected_cond[name]=np.round(np.clip(mtr_condactiv_fault[name]-R*fm.mtr_condactiv_fault[name],0.0,None),decimals=3)
         corrected_mean[name]=np.round(np.clip(mtr_mean_fault[name]-R*fm.mtr_mean_current[name],0.0,None),decimals=3)
-        # only for the std ... the substraction was not as useful
-        corrected_std[name]=np.round(np.nan_to_num(np.clip(mtr_std_fault[name]/(R+fm.mtr_std_current[name]),0.0,None)),decimals=3)
+        corrected_std[name]=np.round(np.nan_to_num(np.clip(mtr_std_fault[name]/(R+fm.mtr_std_current[name]),0.0,None)),decimals=3)# only for the std ... the substraction was not as useful
     # get the last adjustment to eliminate those high means/conditionals that were only artifacts due to being barely represented
+if True:    
     ratio_cond={}
     ratio_mean={}
     ratio_std={}
@@ -200,6 +201,7 @@ def corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_f
 # get best elements per var, per MSO and overall 
 def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,bins,activations):
     # 3) find the points with best aggregation in each variable
+if True:
     results_selection_activ={}
     results_selection_mean={}
     best_arrays_activ={}
@@ -211,7 +213,7 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
         for j in range(ratio_cond[name].shape[1]):
             template_print[i].append(' ')
     template_print=np.array(template_print)
-    
+if True:
     template_activ_set={}
     template_mean_set={}
     for n in range(len(mso_set)):
@@ -232,6 +234,7 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
         
     # 4) Select / order -- Take into account Activ and Mean conf + STD of Mean
     # we get all the necesary metrics for the final ranking ... with several categories and then we add them up (like a talent contest)
+if True:    
     sum_up_data={}
     for n in range(len(mso_set)):
         name='MSO_'+str(n)
@@ -257,7 +260,6 @@ def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_a
                 sum_up_data[name]['interval'].append([bins[var][results_selection_activ[name][var]['position']-half],bins[var][results_selection_activ[name][var]['position']+half+1]])
                 sum_up_data[name]['mean_pos_dist_vs_wind'].append(abs(results_selection_activ[name][var]['position']-results_selection_mean[name][var]['position'])/results_selection_activ[name][var]['window'])
                 sum_up_data[name]['conf_std_values_vs_avg'].append(np.mean(corrected_std[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1])/np.mean(corrected_std[name][i,:]))
-                #print(sum_up_data[name]['conf_std_values_vs_avg'])
                 sum_up_data[name]['cond_prob_mean'].append(np.mean(corrected_cond[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
                 sum_up_data[name]['conf_mean'].append(np.mean(corrected_mean[name][i,results_selection_activ[name][var]['position']-half:results_selection_activ[name][var]['position']+half+1]))
             else:
@@ -363,7 +365,7 @@ def send_email_pdf_figs(path_to_pdf, subject, message, destination, password):
     # send msg
     server.send_message(msg)
         
-# 
+#                            device,version,to_plot,ma,heard_faults,list(,matr_prbs,fm.matr_prbs,    y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_resul
 def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result):
     root_folder='/models/output_document/'
     if not os.path.exists(root_folder):

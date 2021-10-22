@@ -1213,6 +1213,12 @@ class fault_detector:
          self.out_var=out_var
          self.target_var=target_var
          self.filter_stab=filter_stab
+         self.matr_prbs=[]
+         self.mtr_condactiv_fault=[]
+         self.mtr_perc_activ=[]
+         self.mtr_mean_current=[]
+         self.mtr_std_current=[]
+         self.bins = []
          #self.ES_manager=elastic_manager(host,machine)                # Elastic search manager -->> DISABLED FOR THE DOCKER COMPOSE SERVICE
      def get_priors_even(self):
          priori = [] 
