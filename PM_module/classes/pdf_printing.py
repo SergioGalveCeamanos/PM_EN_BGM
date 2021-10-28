@@ -24,6 +24,10 @@ class PDF(FPDF):
         if da=='':
             self.date_creation=datetime.datetime.now().ctime()
         self.set_title(tit+self.date_creation)
+        self.device_id=''
+        self.version=''
+        self.date_start=''
+        self.date_stop=''
         
     def header(self):
         # Custom logo and positioning
@@ -51,7 +55,7 @@ class PDF(FPDF):
         d=self.Header_height+text_space
         img_sp=self.HEIGHT-(2*self.Header_height+text_space)
         for i in range(len(images)):
-            self.image(images[0], self.Lateral_borders, d + i*img_sp / len(images), w=self.WIDTH - 2*self.Lateral_borders , h=(img_sp / len(images))-5)
+            self.image(images[i], self.Lateral_borders, d + i*img_sp / len(images), w=self.WIDTH - 2*self.Lateral_borders , h=(img_sp / len(images))-5)
     
     def chapter_title(self, sect ):
         # Arial 12
@@ -84,7 +88,31 @@ class PDF(FPDF):
             self.print_chapter(title, text)
         if images!=[]: 
             self.page_body(images, text_space=60)
- 
+            
+    def print_txt_page(self, texts=[],title=''):
+        # Generates a page with only text 
+        self.add_page()
+        self.chapter_title(title)
+        self.set_font(self.fon_text, '', 10)
+        self.set_line_width(0.1)
+        # Output justified text
+        for t in texts:
+            self.multi_cell(0, 10, t, 0, 1, 'L', 0)
+            self.ln(2) 
+            
+    def print_cover(self):
+        self.add_page()
+        self.set_font(self.fon_title, '', 24)
+        self.set_line_width(0.5)
+        self.ln(15) 
+        self.cell(0, 0, 'AUTOMATIC HEALTH REPORT' , 0, 1, 'C', 0)
+        self.ln(15) 
+        self.set_font(self.fon_text, '', 16)
+        self.set_line_width(0.15)
+        self.multi_cell(0, 20, 'Device ID: '+self.device_id, 0, 1, 'L', 0)
+        self.multi_cell(0, 20, 'Model Version: '+self.version, 0, 1, 'L', 0)
+        self.multi_cell(0, 20, 'Date Start: '+self.date_start, 0, 1, 'L', 0)
+        self.multi_cell(0, 20, 'Date Start: '+self.date_stop, 0, 1, 'L', 0)
         
 #pdf = PDF(tit='Fault Detection Report')
 #images=[[r"C:\Users\sega01\Downloads\Policy_Management.png",r"C:\Users\sega01\Downloads\Blank diagram.png"]]

@@ -62,6 +62,30 @@ def load_task():
         
     return worked #jsonify(response)
 
+@app.route('/get-report', methods=['POST'])
+def do_notif_report():
+    data = request.get_json()
+    device = int(data['device'])
+    t1 = data['time_start']
+    t2 = data['time_stop']
+    v = data['version']
+    try:
+        table=pd.read_csv(file,index_col=0)
+        new_row={'device': device,'time_start': t1,'time_stop': t2,'date': str(datetime.datetime.now()),'status': 'ToDo','type':'notification','version':v}
+        print('The new task received is: ')
+        print(new_row)
+        table=table.append(new_row,ignore_index=True)
+        table=table.astype({'device': 'int32'},errors='ignore')
+        table.to_csv(file)
+        print('The resulting new table is:')
+        print(table)
+        worked='True'
+    except:
+        print("Error Loading the task to the CSV -> Generate Notification Report")
+        worked='False'
+
+    return worked #jsonify(response)
+
 @app.route('/re-do-forecast', methods=['POST'])
 def redo_forecast():
     data = request.get_json()

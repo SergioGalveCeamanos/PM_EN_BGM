@@ -1219,6 +1219,9 @@ class fault_detector:
          self.mtr_mean_current=[]
          self.mtr_std_current=[]
          self.bins = []
+         self.ful_names=[]
+         self.units=[]
+         self.last_document= "1812-03-19T00:00:00.000Z"
          #self.ES_manager=elastic_manager(host,machine)                # Elastic search manager -->> DISABLED FOR THE DOCKER COMPOSE SERVICE
      def get_priors_even(self):
          priori = [] 

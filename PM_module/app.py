@@ -138,10 +138,14 @@ def cycle(task):
                             report=generate_report(to_write,probabilities,forecast_docs,mso_set,size_mavg=20,version=v)
                             print(report)
                             upload_results(report,'report')"""
-        
                     else:
                         r=False
-                        print('[¡] No available data: the time band must have no recorded samples with the actuators working') 
+                        print('[¡] No available data: the time band must have no recorded samples with the actuators working')
+            elif task['type']=='notification':
+                notification_rep=notification_trigger(task['device'],task['time_stop'],version=task['version'],option=[],length=24,ma=[5,10,20])
+                if notification_rep!='All clear':
+                    #upload_results(notification_rep,'notification')
+                    print(notification_rep)
             elif task['type']=='update_model':
                 print('Task taken to update the unit '+str(task['device']))
                 v=task['version']

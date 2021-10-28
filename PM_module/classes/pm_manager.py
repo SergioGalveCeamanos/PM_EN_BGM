@@ -60,6 +60,16 @@ def get_available_models():
             devices['available_models'].append(m[6:])
     return devices
 
+def get_data_batch(body,time,shared_list):
+    try:
+        body['times']=[time]
+        r = requests.post('http://db_manager:5001/collect-data',json = body,timeout=NEW_TIMEOUT)
+        dd=r.json()
+        shared_list.append(pd.DataFrame(dd))
+    except:
+        print(' [E] A time band was not properly received: ')
+        print(time)
+
 def load_unit_data(device,version="",data_file='/models/model_data_'):
     device=str(device)
     file, folder = file_location(device,version)
@@ -586,12 +596,16 @@ def generate_report(analysis,probabilities,mso_set,size_mavg=20,version=""):
 
 # generate analysis over given data for conditional analysis
 def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size=100):
-
     training_data_stats=fm.training_data_stats
     bins={}
     labels=[]
+    x_plot_labels=[]
     for i in range(bin_size):
         labels.append(i)
+        if i%5==0:
+            x_plot_labels.append(str(i))
+        else:
+            x_plot_labels.append('')
     for var in var_names:
         bb=[training_data_stats['min'][var]-1000*training_data_stats['std'][var]+(i/(bin_size-1))*(training_data_stats['max'][var]-training_data_stats['min'][var])]
         for i in range(bin_size-1):
@@ -616,7 +630,7 @@ def conditional_analysis(fm,telemetry,activations,confidences,var_names,bin_size
     # get the respective tables
     mtr_condactiv_fault, mtr_perc_activ=get_cond_activ_mtrs(joint_activ,fm.mso_set,labels,var_names,bins)
     mtr_mean_current,mtr_std_current=get_mean_std_mtrs(joint_conf,fm.mso_set,labels,var_names,bins)
-    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, labels, y_labe, bins
+    return matr_prbs, mtr_condactiv_fault, mtr_perc_activ, mtr_mean_current, mtr_std_current, x_plot_labels, y_labe, bins
 
 # use the sound analogy to analyze the faults feasible given the registered activations only
 def key_strokes(fm,activations):
@@ -657,188 +671,198 @@ def key_strokes(fm,activations):
                 heard_faults[f,i]=1
     return heard_faults
 
+def dif_dates(d1,d2):
+    dt1=datetime.datetime(year=int(d1[:4]), month=int(d1[5:7]), day=int(d1[8:10]), hour=int(d1[11:13]),  minute=int(d1[14:16]), second=0, microsecond=1000)
+    dt2=datetime.datetime(year=int(d2[:4]), month=int(d2[5:7]), day=int(d2[8:10]), hour=int(d2[11:13]),  minute=int(d2[14:16]), second=0, microsecond=1000)
+    return abs((dt2 - dt1).total_seconds()/3600) 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
-def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12]):
-  
+def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12],space_between=12):
+
+    notification_report='All clear'
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     #get initial date
-if True:
-    next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
-    next_t=next_t.isoformat()
-    time_start=next_t[:(len(next_t)-3)]+'Z'
-    names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
-    names.remove(fm.filt_parameter)
-    #names.append(fm.target_var)
-    ######## NOT LIKE THIS --> MUST BE CHANGED #############
-    if int(device)==71471 or int(device)==74124:
-        aggSeconds=1
-    ########################################################
-if True:
-    body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
-    try:
-        print(' HTTP message Body: ')
-        print(body)
-        r = requests.post('http://db_manager:5001/collect-reports',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
-        data=r.json()
-    except:  # This is the correct syntax
-        print(' [!] Error gathering Telemetry')
-    
-    # check if the reports are to be concern a generate a notification analysis  
-    health=[]
-    labels=[]
-    for i in data:
-        health.append(data[i][0]['health'])
-        labels.append(data[i][0]['timestamp'])
-    to_plot={}
-    for m in ma:
-        to_plot[m]=[]
-    line_c=0
-    for i in range(max(ma),len(health)):
-        for m in ma:
-            to_plot[m].append(sum(health[i-m:i])/m)
-    slopes={}
-    ratio_slope={}
-    ratio_minmean={}
-    points=[]
-    to_notify=False
-    for m in ma:
-        slopes[m]=np.abs(np.array(to_plot[m][1:])-np.array(to_plot[m][:-1]))
-        if np.max(np.abs(slopes[m]))>0:
-            ratio_slope[m]=np.abs(np.mean(slopes[m])/np.max(np.abs(slopes[m])))
-            ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
-            points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
-        else:
-            points.append(np.mean(to_plot[m]))
-    # collect data --> is 60% appropiate value with new health measures ??
-    if np.mean(points)>85:
-        print(' [I] Healthy resolution with evaluations: '+str(points))
-        notification_report='All clear'
-    else:
-        #generate time stamps for the whole period in slots of 30 min
-        base_time=30 #minutes per request
-        time_set=[]
-        for tim in times_b:
-            start=tim[0]
-            end=tim[1]
-            go_on=True
-            from_t=start
-            until_t=''
-            i=0
-            while go_on:
-                i=i+1
-                next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
-                next_t=next_t.isoformat()
-                until_t=next_t[:(len(next_t)-3)]+'Z'
-                time_set.append([from_t,until_t])
-                from_t=until_t
-                if until_t>=end:
-                    go_on=False
-        #download the data
-        #Telemetry
-if True:
+    if dif_dates(fm.last_document,time_stop)>space_between:
+
+        next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
+        next_t=next_t.isoformat()
+        time_start=next_t[:(len(next_t)-3)]+'Z'
+        names,times_b=fm.get_data_names(option='CarolusRex',times=[[time_start,time_stop]])
+        names.remove(fm.filt_parameter)
+        #names.append(fm.target_var)
+        ######## NOT LIKE THIS --> MUST BE CHANGED #############
+        if int(device)==71471 or int(device)==74124:
+            aggSeconds=1
+        ########################################################
+
+        body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
         try:
-            body={'device':device,'names':names,'times':[],'aggSeconds':aggSeconds}
-            proc=int(multiprocessing.cpu_count())
-            manager = multiprocessing.Manager()
-            shared_list=manager.list()
-            sub_batch=[]
-            sub_si=0
-            for time in time_set:
-                jobs = []
-                if len(sub_batch)<(proc-1):
-                    sub_batch.append(time)
+            print(' HTTP message Body: ')
+            print(body)
+            r = requests.post('http://db_manager:5001/collect-reports',json = body,timeout=NEW_TIMEOUT) # 'http://db_manager:5001/collect-data'
+            data=r.json()
+        except:  # This is the correct syntax
+            print(' [!] Error gathering Telemetry')
+     
+        # check if the reports are to be concern a generate a notification analysis 
+
+        health=[]
+        labels=[]
+        for i in data:
+            health.append(data[i][0]['health'])
+            labels.append(data[i][0]['timestamp'])
+        if len(health)>max(ma):
+            health_gathered=True
+            to_plot={}
+            for m in ma:
+                to_plot[m]=[]
+            line_c=0
+            for i in range(max(ma),len(health)):
+                for m in ma:
+                    to_plot[m].append(sum(health[i-m:i])/m)
+            slopes={}
+            ratio_slope={}
+            ratio_minmean={}
+            points=[]
+            to_notify=False
+            for m in ma:
+                slopes[m]=np.abs(np.array(to_plot[m][1:])-np.array(to_plot[m][:-1]))
+                if np.max(np.abs(slopes[m]))>0:
+                    ratio_slope[m]=np.abs(np.mean(slopes[m])/np.max(np.abs(slopes[m])))
+                    ratio_minmean[m]=np.min(np.abs(to_plot[m]))/np.mean(np.abs(to_plot[m]))
+                    points.append(np.min(np.abs(to_plot[m]))/(ratio_minmean[m]+np.sqrt(ratio_slope[m])))
                 else:
-                    sub_batch.append(time)
-                    for t in sub_batch:
-                        p = multiprocessing.Process(target=get_data_batch, args=(body,t,shared_list))
-                        p.start()
-                        jobs.append(p)
-                    for q in jobs:
-                        q.join()
-                    sub_batch=[] 
-            first=True
-            for df in shared_list:
-                if first:
-                    data=df
-                    first=False
-                else:
-                    data=data.append(df,ignore_index=True)        
-        except requests.exceptions.RequestException as e:  # This is the correct syntax
-            raise SystemExit(e)
-        print('All Data Collected')
-        print(data)
-if True:
-        activations=[]
-        confidences=[]
-        first=True
-        for time in time_set:
-            names_fields=['activations','confidence','timestamp','group_prob']
-            body={'device':str(device),'trained_version':version,'times':[time[0],time[1]],'group_prob':1} #'names':names_fields,
+                    points.append(np.mean(to_plot[m]))
+        else:
+            health_gathered=False
+            points=100
+        # collect data --> is 60% appropiate value with new health measures ??
+        if np.mean(points)>85:
+            if health_gathered:
+                print(' [I] Healthy resolution with evaluations: '+str(points))
+            else:
+                print(' [I] Not enough health reports to make an analysis.')
+        else:
+            #generate time stamps for the whole period in slots of 30 min
+
+            base_time=30 #minutes per request
+            time_set=[]
+            for tim in times_b:
+                start=tim[0]
+                end=tim[1]
+                go_on=True
+                from_t=start
+                until_t=''
+                i=0
+                while go_on:
+                    i=i+1
+                    next_t=datetime.datetime(year=int(start[:4]), month=int(start[5:7]), day=int(start[8:10]), hour=int(start[11:13]),  minute=int(start[14:16]), second=0, microsecond=1000)+datetime.timedelta(minutes=30*i)
+                    next_t=next_t.isoformat()
+                    until_t=next_t[:(len(next_t)-3)]+'Z'
+                    time_set.append([from_t,until_t])
+                    from_t=until_t
+                    if until_t>=end:
+                        go_on=False
+            #download the data
+            #Telemetry
+
             try:
-                r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # here data will be a list of dicts, in each one all the fields separated by mso
-                all_data=r.json()
-                if all_data!=[]:
+                body={'device':str(device),'names':names,'times':[],'aggSeconds':aggSeconds}
+                proc=int(multiprocessing.cpu_count())
+                manager = multiprocessing.Manager()
+                shared_list=manager.list()
+                sub_batch=[]
+                sub_si=0
+                for time in time_set:
+                    jobs = []
+                    if len(sub_batch)<(proc-1):
+                        sub_batch.append(time)
+                    else:
+                        sub_batch.append(time)
+                        for t in sub_batch:
+                            p = multiprocessing.Process(target=get_data_batch, args=(body,t,shared_list))
+                            p.start()
+                            jobs.append(p)
+                        for q in jobs:
+                            q.join()
+                        sub_batch=[] 
+                first=True
+                for df in shared_list:
                     if first:
-                        timestamps=all_data[0]['timestamp']
-                        for i in range(len(fm.mso_set)):
-                            activations.append(all_data[i][names_fields[0]])
-                            confidences.append(all_data[i][names_fields[1]])
+                        data=df
                         first=False
                     else:
-                        timestamps=timestamps+all_data[0]['timestamp']
-                        for i in range(len(fm.mso_set)):
-                            activations[i]=activations[i]+all_data[i][names_fields[0]]
-                            confidences[i]=confidences[i]+all_data[i][names_fields[1]]
+                        data=data.append(df,ignore_index=True)        
             except requests.exceptions.RequestException as e:  # This is the correct syntax
-                traceback.print_exc()
                 raise SystemExit(e)
-    
-        # Get all the fault feasibility 
-if True:
-        heard_faults=key_strokes(fm,activations)
-        labels=[]
-        for i in range(fm.bin_size):
-            labels.append(i)
-        data=data[data['timestamp'].isin(timestamps)]   # make sure the same samples are selected
-        dic_res={'timestamp':timestamps}
-        for i in range(len(fm.mso_set)):
-            n1='acti_'+str(i)
-            n2='conf_'+str(i)
-            dic_res[n1]=activations[i]
-            dic_res[n2]=confidences[i]
-        df_res=pd.DataFrame(dic_res)
-        df_res=df_res[df_res['timestamp'].isin(data['timestamp'])]   
-        activations=[]
-        confidences=[]
-        timestamps=df_res['timestamp'].values
-        for i in range(len(fm.mso_set)):
-            n1='acti_'+str(i)
-            n2='conf_'+str(i)
-            activations.append(df_res[n1].values)
-            confidences.append(df_res[n2].values)
-        data=data[list(fm.traductor.keys())] # call for the core matrices of the analysis
-if True:    
-        matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm, bins =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
-        R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
-        sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,bins,activations)
-        notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
-        launch_report_generation(device,version,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbs,x_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
-    return notification_report
+            print('All Data Collected')
+            print(data)
+
+            activations=[]
+            confidences=[]
+            first=True
+            for time in time_set:
+                names_fields=['activations','confidence','timestamp','group_prob']
+                body={'device':str(device),'trained_version':version,'times':[time[0],time[1]],'group_prob':1} #'names':names_fields,
+                try:
+                    r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) # here data will be a list of dicts, in each one all the fields separated by mso
+                    all_data=r.json()
+                    if all_data!=[]:
+                        if first:
+                            timestamps=all_data[0]['timestamp']
+                            for i in range(len(fm.mso_set)):
+                                activations.append(all_data[i][names_fields[0]])
+                                confidences.append(all_data[i][names_fields[1]])
+                            first=False
+                        else:
+                            timestamps=timestamps+all_data[0]['timestamp']
+                            for i in range(len(fm.mso_set)):
+                                activations[i]=activations[i]+all_data[i][names_fields[0]]
+                                confidences[i]=confidences[i]+all_data[i][names_fields[1]]
+                except requests.exceptions.RequestException as e:  # This is the correct syntax
+                    traceback.print_exc()
+                    raise SystemExit(e)
+            # Get all the fault feasibility 
+
+            heard_faults=key_strokes(fm,activations)
+            labels=[]
+            for i in range(fm.bin_size):
+                labels.append(i)
+            data=data[data['timestamp'].isin(timestamps)]   # make sure the same samples are selected
+            dic_res={'timestamp':timestamps}
+            for i in range(len(fm.mso_set)):
+                n1='acti_'+str(i)
+                n2='conf_'+str(i)
+                dic_res[n1]=activations[i]
+                dic_res[n2]=confidences[i]
+            df_res=pd.DataFrame(dic_res)
+            df_res=df_res[df_res['timestamp'].isin(data['timestamp'])]   
+            activations=[]
+            confidences=[]
+            timestamps=df_res['timestamp'].values
+            for i in range(len(fm.mso_set)):
+                n1='acti_'+str(i)
+                n2='conf_'+str(i)
+                activations.append(df_res[n1].values)
+                confidences.append(df_res[n2].values)
+            data=data[list(fm.traductor.keys())] # call for the core matrices of the analysis
+
+            date_start=datetime.datetime(year=int(time_start[:4]), month=int(time_start[5:7]), day=int(time_start[8:10]), hour=int(time_start[11:13]),  minute=int(time_start[14:16]), second=0, microsecond=1000).ctime()
+            date_stop=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000).ctime()
+            information={'device_id':str(device),'version':version,'date_start':date_start,'date_stop':date_stop,'units':fm.units,'full_names':fm.ful_names}
+            matr_prbs,mtr_condactiv_fault, mtr_perc_activ, mtr_mean_fault, mtr_std_fault, x_label_hm, y_label_hm, bins =conditional_analysis(fm,data,activations,confidences,names,bin_size=fm.bin_size)
+            R,ratio_cond,ratio_mean,ratio_std,corrected_cond,corrected_mean,corrected_std = corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_fault)
+            sum_up_data, result_scores, combined_result, template_activ_set, template_mean_set = final_selection(fm.mso_set,names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,bins,activations)
+            notification_report={'timestamp':time_stop,'Variable Scores':combined_result,'Result Scores':result_scores,'Main Metrics':sum_up_data,'device':str(device),'trained_version':version}
+            launch_report_generation(information,bins,to_plot,ma,heard_faults,list(fm.faults.values()),matr_prbs,fm.matr_prbs,x_label_hm, y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result)
+            fm.last_document=time_stop
+            fm.Save(folder,file)
+        return notification_report
   
-def get_analysis(body,shared_list):
-    try:
-        r = requests.post('http://db_manager:5001/collect-model-error',json = body,timeout=NEW_TIMEOUT) 
-        shared_list[body['times'][0]]=r.json()
-    except:
-        print(' [E] A time band gathering analysis data was not properly received: ')
-        print(body)
-        traceback.print_exc()
         
 def set_up_notification_baselines(device,time_set,version="",option=[],length=24):
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
-if True:
     telemetry=fm.full_train_data
     names=['activations','confidence','timestamp','group_prob']
     activations=[]
@@ -865,7 +889,6 @@ if True:
             traceback.print_exc()
     # [!!!] check that the data is the same in full_train_data vs the one obtained for activations and so ...
     # call for the core matrices of the analysis
-if True:
     names,times_b=fm.get_data_names(option='CarolusRex',times=time_set)
     names.remove(fm.filt_parameter)
     data_selected=fm.full_train_data[fm.full_train_data['timestamp'].isin(times)]
@@ -877,7 +900,6 @@ if True:
         to_df[name+'con']=confidences[i]
     df_analysis=pd.DataFrame(to_df)
     matching=df_analysis[df_analysis['timestamp'].isin(data_selected['timestamp'])]
-if True:
     times=matching['timestamp'].values   
     activations=[]
     confidences=[]
@@ -1031,16 +1053,6 @@ def homo_sampling(data,cont_cond,s=50000,uncertainty=[]):
         first=False
     # we return the    
     return final_samp
-
-def get_data_batch(body,time,shared_list):
-    try:
-        body['times']=[time]
-        r = requests.post('http://db_manager:5001/collect-data',json = body,timeout=NEW_TIMEOUT)
-        dd=r.json()
-        shared_list.append(pd.DataFrame(dd))
-    except:
-        print(' [E] A time band was not properly received: ')
-        print(time)
     
 def train_and_upload(machine,time,version,aggSeconds):
     to_write, do_prob=get_analysis(machine,time[0],time[1],version,aggSeconds)
@@ -1256,7 +1268,7 @@ def set_new_model(mso_path,host,machine,matrix,sensors_in_tables,faults,sensors,
                 sub_batch=[]
 
         # with all training range prepared we do the baseline conditional analysis
-        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current, fm.bins = set_up_notification_baselines(machine,time_set,version=version,option=[],length=24)
+        fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current, fault_manager.bins = set_up_notification_baselines(machine,time_set,version=version,option=[],length=24)
         #print('  [T] TOTAL sensitivity analysis computing time ---> '+str(dif))
         response={}
         fault_manager.version=version
@@ -1400,7 +1412,7 @@ def update_model(device,time_start,time_stop,version="",aggSeconds=1):
             sub_batch=[]
 
     # with all training range prepared we do the baseline conditional analysis
-    fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current = set_up_notification_baselines(device,time_set[0][0],time_set[-1][1],version="",option=[],length=24,ma=[5,10,20])
+    fault_manager.matr_prbs, fault_manager.mtr_condactiv_fault, fault_manager.mtr_perc_activ, fault_manager.mtr_mean_current, fault_manager.mtr_std_current, fault_manager.bins = set_up_notification_baselines(device,time_set[0][0],time_set[-1][1],version="",option=[],length=24,ma=[5,10,20])
     
     fault_manager.Save(folder,file)
     fault_manager.data_creation=datetime.datetime.now()

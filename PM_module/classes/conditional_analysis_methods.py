@@ -187,7 +187,7 @@ def corrected_matrices(fm,matr_prbs,mtr_condactiv_fault,mtr_mean_fault,mtr_std_f
         corrected_mean[name]=np.round(np.clip(mtr_mean_fault[name]-R*fm.mtr_mean_current[name],0.0,None),decimals=3)
         corrected_std[name]=np.round(np.nan_to_num(np.clip(mtr_std_fault[name]/(R+fm.mtr_std_current[name]),0.0,None)),decimals=3)# only for the std ... the substraction was not as useful
     # get the last adjustment to eliminate those high means/conditionals that were only artifacts due to being barely represented
-if True:    
+   
     ratio_cond={}
     ratio_mean={}
     ratio_std={}
@@ -201,7 +201,7 @@ if True:
 # get best elements per var, per MSO and overall 
 def final_selection(mso_set,var_names,matr_prbs,ratio_cond,ratio_mean,mtr_perc_activ,corrected_std,corrected_cond,corrected_mean,bins,activations):
     # 3) find the points with best aggregation in each variable
-if True:
+
     results_selection_activ={}
     results_selection_mean={}
     best_arrays_activ={}
@@ -213,7 +213,7 @@ if True:
         for j in range(ratio_cond[name].shape[1]):
             template_print[i].append(' ')
     template_print=np.array(template_print)
-if True:
+
     template_activ_set={}
     template_mean_set={}
     for n in range(len(mso_set)):
@@ -234,7 +234,7 @@ if True:
         
     # 4) Select / order -- Take into account Activ and Mean conf + STD of Mean
     # we get all the necesary metrics for the final ranking ... with several categories and then we add them up (like a talent contest)
-if True:    
+   
     sum_up_data={}
     for n in range(len(mso_set)):
         name='MSO_'+str(n)
@@ -364,16 +364,22 @@ def send_email_pdf_figs(path_to_pdf, subject, message, destination, password):
     msg.attach(attach)
     # send msg
     server.send_message(msg)
-        
+
+   
+
 #                            device,version,to_plot,ma,heard_faults,list(,matr_prbs,fm.matr_prbs,    y_label_hm,mtr_condactiv_fault,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_resul
-def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result):
+def launch_report_generation(information,bins,health,ma,heard_faults,faults,mtr_prbs,train_prbs,labels,y_labe,mtr_condactiv,mtr_mean_fault,template_activ_set, template_mean_set, sum_up_data, combined_result):
     root_folder='/models/output_document/'
     if not os.path.exists(root_folder):
         print(root_folder)
         os.mkdir(root_folder)
     
-    document=PDF(tit='Health Report - SN: '+str(device)+' - v: '+version+' - '+datetime.datetime.now().ctime())
-
+    document=PDF(tit='Health Report - SN: '+information['device_id']+' - v: '+information['version']+' - '+datetime.datetime.now().ctime())
+    document.device_id=information['device_id']
+    document.version=information['version']
+    document.date_start=information['date_start']
+    document.date_stop=information['date_stop']
+    document.print_cover()
     fe = fm.FontEntry(fname='BrandonGrotesqueOffice-Light.ttf',name='Brandom')
     fm.fontManager.ttflist.insert(0, fe) # or append is fine
     #mpl.rcParams['font.family'] = fe.name # = 'your custom ttf font name'
@@ -387,7 +393,27 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     # page 0 - Summary page: 3 faults, 3 vars, timebands relevant 
     
     
-    # page 1 - Health Evolution   
+    # page 1 - Summary page: present the variables used, their limits in the training data and the complete names (2nd traductor)
+    name_tab=root_folder+'table_summary.png'
+    tab={'Legend':[],'Variable Name':[],'Units':[],'Min Value':[],'Max Value':[]}
+    ogs=list(bins.keys())
+    i=-1
+    body_tab='The following pages will present a detailed analysis of the recorded telemetry. The same variables were used in a training process to adjust the PM system, to help the understanding of the following plots this page presents the variables used:'
+    texts=[body_tab]
+    for n in y_labe:
+        i=i+1
+        new_var='  - '
+        tab['Legend'].append(n)
+        tab['Variable Name'].append(information['full_names'][n])
+        tab['Units'].append(information['units'][n])
+        tab['Min Value'].append(str(round(bins[ogs[i]][1],2)))
+        tab['Max Value'].append(str(round(bins[ogs[i]][-2],2)))
+        new_var=new_var+information['full_names'][n]+' (aka '+n+', '+information['units'][n]+'): ['+str(round(bins[ogs[i]][1],2))+','+str(round(bins[ogs[i]][-2],2))+']'
+        texts.append(new_var)
+    document.print_txt_page(texts=texts,title='Telemetry Information')
+    
+    
+    # page 2 - Health Evolution   
     name_health=root_folder+'health_evolution.png'
     fig = plt.figure(figsize=(15.0, 20.0))
     colors=['r','orange','y','g','purple','b','grey']
@@ -417,10 +443,10 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     #plt.legend()
     plt.title('Last 24h Health Evolution')
     plt.savefig(name_health, dpi=300, bbox_inches='tight')
-    body_health='The Monitoring system detected a significant health decrement and this notification report is created in response. This page presents the health indicator evolution the last 24h, smoothed from 30min analysis windows.'
+    body_health='The Monitoring system detected a significant health decrement and this notification report is created in response. This page presents the health indicator evolution the last 24h, smoothed from 30min analysis windows between the dates: '+information['date_start']+' and '+information['date_stop']
     document.print_page([name_health],body_health,'TCU Health Warning')
     
-    # page 2 - Feasible Fault Analysis 
+    # page 3 - Feasible Fault Analysis 
     # https://scentellegher.github.io/visualization/2018/10/10/beautiful-bar-plots-matplotlib.html
     name_faults=root_folder+'feasible_faults.png'
     active_perc=[]
@@ -433,11 +459,11 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     fig, ax = plt.subplots(figsize=(10,7))
     plt.hlines(y=my_range, xmin=0, xmax=df['percentage'], color='#007ACC', alpha=0.2, linewidth=5)
     plt.plot(df['percentage'], my_range, "o", markersize=5, color='#007ACC', alpha=0.6)
-    ax.set_xlabel('Percentage', fontsize=15, fontweight='black', color = '#333F4B')
-    ax.set_ylabel('')
+    ax.set_xlabel('Percentage', fontsize=10, fontweight='black', color = '#333F4B')
+    ax.set_ylabel('Fault Type', fontsize=10, fontweight='black', color = '#333F4B')
     ax.tick_params(axis='both', which='major', labelsize=12)
     plt.yticks(my_range, df.index)
-    fig.text(-0.23, 0.96, 'Fault Type', fontsize=15, fontweight='black', color = '#333F4B')
+    #fig.text(-0.23, 0.96, 'Fault Type', fontsize=15, fontweight='black', color = '#333F4B')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_bounds((1, len(my_range)))
@@ -448,20 +474,20 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     body_faults='During the analyzed period the observed activations point out which faults could explain the issue. Usually more than one fault can be responsible but when agreggated the faults that are the better explanation are sorted in the following plot. Which percentage of the observed time where this faults a valid explanation is not reason enough to isolate one, but points out to the best candidates.'
     document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
     
-    # page 3 - probability distribution
+    # page 4 - probability distribution
     name_probs = [root_folder+'new_probs.png',root_folder+'train_probs.png']
     fig = plt.figure(figsize=(20.0, 15.0))
-    sns.heatmap(mtr_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    sns.heatmap(mtr_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom",shrink= 0.3)) #,cbar_kws = dict(use_gridspec=False,location="bottom")
     plt.title('Probability distribution of the different variables in last 24h (%)')
     plt.savefig(name_probs[0], dpi=300, bbox_inches='tight')
     fig = plt.figure(figsize=(20.0, 15.0))
-    sns.heatmap(train_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom"))
+    sns.heatmap(train_prbs,cmap='Spectral',annot=False,xticklabels=labels,yticklabels=y_labe,norm=LogNorm(),square=True, linewidth=0.1, linecolor='silver',cbar_kws = dict(use_gridspec=False,location="bottom",shrink= 0.3)) #,cbar_kws = dict(use_gridspec=False,location="bottom")
     plt.title('Probability distribution of the different variables in training data (%)')
     plt.savefig(name_probs[1], dpi=300, bbox_inches='tight')
     body_probs='It is important to take into account in which condition was the machine working. The following plots show the probability of each variable taking the discretized values shown, comparing them with the distribution among the training data set.'
     document.print_page(name_probs,body_probs,'Probability Distribution Comparison')
     
-    # page 4 - Preliminary Analysis of Model Results 1
+    # page 5 - Preliminary Analysis of Model Results 1
     name_condactiv=[root_folder+'cond_prob_activ.png']
     names_msos=list(mtr_condactiv.keys())
     q=int(len(names_msos)/2)
@@ -475,11 +501,11 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
         sns.heatmap(mtr_condactiv[name],cmap='Spectral',annot=template_activ_set[name], fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver')
         ax1.title.set_text(name)         
     fig.suptitle("Conditional Activations per Model")
-    plt.savefig(name_condactiv, dpi=300, bbox_inches='tight')
+    plt.savefig(name_condactiv[0], dpi=300, bbox_inches='tight')
     body_cond='One of the interpretations to the model results is to construct the conditional probability of having activation of a model when a variable takes a specific value. This information help us to understand which variables are behind the fault, being responsible for relations not accounted by the models. In each matrix the most relevant parts have been pointed out.'
     document.print_page(name_condactiv,body_cond,'Conditional Probability of Activations')
     
-    # page 5 - Preliminary Analysis of Model Results 2
+    # page 6 - Preliminary Analysis of Model Results 2
     name_mean=[root_folder+'mean_conf.png']
     names_msos=list(mtr_condactiv.keys())
     q=int(len(names_msos)/2)
@@ -493,13 +519,13 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
         sns.heatmap(mtr_mean_fault[name],cmap='Spectral',annot=template_mean_set[name], fmt ='',xticklabels=labels,norm=LogNorm(),yticklabels=y_labe, linewidth=0.1,linecolor='silver')
         ax1.title.set_text(name)         
     fig.suptitle("Mean Confidence per Model")
-    plt.savefig(name_mean, dpi=300, bbox_inches='tight')
+    plt.savefig(name_mean[0], dpi=300, bbox_inches='tight')
     body_mean='Complementary to the information obtained with conditional probabilities of activations, the mean value of each model confidence conditioned by each variable is useful information. The previous analysis might not be as sensitive as the following plots, where we can see more subtle correlations between the fault effect and the resulting estimations.'
     document.print_page(name_mean,body_mean,'Mean Confidence of Models')
     
-    # page 6 - Sum up A : score by var and by MSO for 
+    # page 7 - Sum up A : score by var and by MSO for 
     # https://scentellegher.github.io/visualization/2018/10/10/beautiful-bar-plots-matplotlib.html
-    name_faults=root_folder+'feasible_faults.png'
+    name_scores=root_folder+'scores_detail.png'
     fig = plt.figure(figsize=(15.0, 10.0))
     ax_cond = fig.add_subplot(3,1,1)
     ax_mean = fig.add_subplot(3,1,2)
@@ -542,7 +568,7 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     ax_cond.tick_params(axis='both', which='major', labelsize=12)
     ax_ratio.tick_params(axis='both', which='major', labelsize=12)
     
-    fig.text(-0.23, 0.96, 'Scores', fontsize=15, fontweight='black', color = '#333F4B')
+    #fig.text(-0.23, 0.96, 'Scores', fontsize=10, fontweight='black', color = '#333F4B')
     ax_cond.spines['top'].set_visible(False)
     ax_cond.spines['right'].set_visible(False)
     #ax_cond.spines['left'].set_bounds((1, len(my_range)))
@@ -573,12 +599,12 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     ax_ratio.set_xticks(my_range) 
     ax_ratio.set_xticklabels(y_labe)
     plt.tight_layout(h_pad=1.0)
-    plt.savefig(name_faults, dpi=300, bbox_inches='tight')
+    plt.savefig(name_scores, dpi=300, bbox_inches='tight')
     body_faults='The analysis performed digests all the model results and the statistical characteristics of the gathered telemetry. As a result a set of scores is created to evaluate the effect of the hinted fault on each variable and find the best ones. The following plots show the main scores used:'
-    document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
+    document.print_page([name_scores],body_faults,'Analysis of Best Fault Candidates')
     
-    # Page 7 - resulting selection
-    name_faults=root_folder+'final_scores.png'
+    # Page 8 - resulting selection
+    name_final_score=root_folder+'final_scores.png'
     percentages = pd.Series(combined_result, index=y_labe)
     df = pd.DataFrame({'Final Score' : percentages})
     df = df.sort_values(by='Final Score')
@@ -586,25 +612,25 @@ def launch_report_generation(device,version,health,ma,heard_faults,faults,mtr_pr
     fig, ax = plt.subplots(figsize=(10,7))
     plt.hlines(y=my_range, xmin=0, xmax=df['Final Score'], color='crimson', alpha=0.2, linewidth=5)
     plt.plot(df['Final Score'], my_range, "o", markersize=5, color='crimson', alpha=0.6)
-    ax.set_xlabel('Final Score', fontsize=15, fontweight='black', color = '#333F4B')
-    ax.set_ylabel('')
+    ax.set_xlabel('Final Score', fontsize=10, fontweight='black', color = '#333F4B')
+    ax.set_ylabel('Variables', fontsize=10, fontweight='black', color = '#333F4B')
     ax.tick_params(axis='both', which='major', labelsize=12)
     plt.yticks(my_range, df.index)
-    fig.text(-0.23, 0.96, 'Variables', fontsize=15, fontweight='black', color = '#333F4B')
+    #fig.text(-0.23, 0.96, 'Variables', fontsize=10, fontweight='black', color = '#333F4B')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_bounds((1, len(my_range)))
     ax.set_xlim(1)
     ax.spines['left'].set_position(('outward', 8))
     ax.spines['bottom'].set_position(('outward', 5))
-    plt.savefig(name_faults, dpi=300, bbox_inches='tight')
+    plt.savefig(name_final_score, dpi=300, bbox_inches='tight')
     body_faults='The models trained that have generated an interpretation for each fault is combined with the statistical characteristics of the TCU to identify the fault that triggered this report. The fault ranked in the previous page can be reasoned with the final ranking of each variable presented here.' 
-    document.print_page([name_faults],body_faults,'Analysis of Best Fault Candidates')
+    document.print_page([name_final_score],body_faults,'Analysis of Best Fault Candidates')
     
     ################### SAVE / SEND ######################
-    tit='HR- SN:'+str(device)+'- v: '+version+'- '+datetime.datetime.now().isoformat()
+    tit='HR- SN:'+information['device_id']+'- v: '+information['version']+'- '+datetime.datetime.now().isoformat()
     report_file=root_folder+tit+'.pdf'
     document.output(report_file, 'F')
     
-    send_email_pdf_figs(report_file, subject='Notification - TCU Health Warning', message='Test service to send reports', destination='sergio.galve@lauda-ultracool.com', password='Lauda2020')
+    send_email_pdf_figs(report_file, subject='Notification - TCU Health Warning', message='Test service to send reports', destination='sergio.galve@lauda-ultracool.com', password='Lauda2020') #sergigalve@gmail.com
     print(' --------- MAIL SENT WITH COMPLETE REPORT -----------')    
