@@ -676,14 +676,14 @@ def dif_dates(d1,d2):
     dt2=datetime.datetime(year=int(d2[:4]), month=int(d2[5:7]), day=int(d2[8:10]), hour=int(d2[11:13]),  minute=int(d2[14:16]), second=0, microsecond=1000)
     return abs((dt2 - dt1).total_seconds()/3600) 
 # Once per report generated it is checked if the health is going worse and it generates an analysis of the last 24h(?)
-def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12],space_between=12):
+def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7,9,12],space_between=6):
 
     notification_report='All clear'
     file, folder = file_location(device,version)
     fm=load_model(file, folder)
     #get initial date
     if dif_dates(fm.last_document,time_stop)>space_between:
-
+if True:
         next_t=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000)-datetime.timedelta(hours=length)
         next_t=next_t.isoformat()
         time_start=next_t[:(len(next_t)-3)]+'Z'
@@ -694,7 +694,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
         if int(device)==71471 or int(device)==74124:
             aggSeconds=1
         ########################################################
-
+if True:
         body={'device':str(device),'times':[time_start,time_stop],'aggSeconds':aggSeconds,'trained_version': version}
         try:
             print(' HTTP message Body: ')
@@ -705,7 +705,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             print(' [!] Error gathering Telemetry')
      
         # check if the reports are to be concern a generate a notification analysis 
-
+if True:
         health=[]
         labels=[]
         for i in data:
@@ -738,13 +738,15 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
             points=100
         # collect data --> is 60% appropiate value with new health measures ??
         if np.mean(points)>85:
+            print(' ---------------------------------------- ')
             if health_gathered:
                 print(' [I] Healthy resolution with evaluations: '+str(points))
             else:
                 print(' [I] Not enough health reports to make an analysis.')
+            print(' ---------------------------------------- ')
         else:
             #generate time stamps for the whole period in slots of 30 min
-
+if True:
             base_time=30 #minutes per request
             time_set=[]
             for tim in times_b:
@@ -765,7 +767,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                         go_on=False
             #download the data
             #Telemetry
-
+if True:
             try:
                 body={'device':str(device),'names':names,'times':[],'aggSeconds':aggSeconds}
                 proc=int(multiprocessing.cpu_count())
@@ -797,11 +799,12 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                 raise SystemExit(e)
             print('All Data Collected')
             print(data)
-
+if True:
             activations=[]
             confidences=[]
             first=True
             for time in time_set:
+                print(' ------ ')
                 names_fields=['activations','confidence','timestamp','group_prob']
                 body={'device':str(device),'trained_version':version,'times':[time[0],time[1]],'group_prob':1} #'names':names_fields,
                 try:
@@ -822,8 +825,9 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                 except requests.exceptions.RequestException as e:  # This is the correct syntax
                     traceback.print_exc()
                     raise SystemExit(e)
+                print(' ------ ')
             # Get all the fault feasibility 
-
+if True:
             heard_faults=key_strokes(fm,activations)
             labels=[]
             for i in range(fm.bin_size):
@@ -846,7 +850,7 @@ def notification_trigger(device,time_stop,version="",option=[],length=24,ma=[5,7
                 activations.append(df_res[n1].values)
                 confidences.append(df_res[n2].values)
             data=data[list(fm.traductor.keys())] # call for the core matrices of the analysis
-
+if True:
             date_start=datetime.datetime(year=int(time_start[:4]), month=int(time_start[5:7]), day=int(time_start[8:10]), hour=int(time_start[11:13]),  minute=int(time_start[14:16]), second=0, microsecond=1000).ctime()
             date_stop=datetime.datetime(year=int(time_stop[:4]), month=int(time_stop[5:7]), day=int(time_stop[8:10]), hour=int(time_stop[11:13]),  minute=int(time_stop[14:16]), second=0, microsecond=1000).ctime()
             information={'device_id':str(device),'version':version,'date_start':date_start,'date_stop':date_stop,'units':fm.units,'full_names':fm.ful_names}

@@ -933,10 +933,8 @@ class residual:
                  print('     Center of cluster: '+str(self.bgm.cluster_centers_[t]))
                  print(cont_selec)
          error = measured_value - predictions  
-         #print('Errors generated')
-         #print(error)
-
          return error,groups,probs
+     
      # just the adjustment of x given the gaussian params (usually center on 0), x must be an array of np
      def gaussian(self,x,sig,mu=0):
          return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))

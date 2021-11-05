@@ -112,7 +112,7 @@ class PDF(FPDF):
         self.multi_cell(0, 20, 'Device ID: '+self.device_id, 0, 1, 'L', 0)
         self.multi_cell(0, 20, 'Model Version: '+self.version, 0, 1, 'L', 0)
         self.multi_cell(0, 20, 'Date Start: '+self.date_start, 0, 1, 'L', 0)
-        self.multi_cell(0, 20, 'Date Start: '+self.date_stop, 0, 1, 'L', 0)
+        self.multi_cell(0, 20, 'Date Stop:  '+self.date_stop, 0, 1, 'L', 0)
         
 #pdf = PDF(tit='Fault Detection Report')
 #images=[[r"C:\Users\sega01\Downloads\Policy_Management.png",r"C:\Users\sega01\Downloads\Blank diagram.png"]]

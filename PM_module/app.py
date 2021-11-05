@@ -235,7 +235,7 @@ if __name__ == '__main__':
     # LOAD MODELS IN DICTIONARY
     #app.run(port=5002,threaded=True)
     file_tasks='/models/tasks.csv'
-    paralels=3  
+    paralels=1  
     while True:
          room=True
          inem=False
