@@ -52,7 +52,6 @@ def collect_model_error():
     print(request)
     data = request.get_json()
     print(data)
-if True:
     device = data['device']
     times = data['times']
     version = data['trained_version']

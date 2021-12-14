@@ -163,7 +163,6 @@ def mutate(sig,mu):
 # Main function to launch the GA optimization process. As parameters the confussion matrix is requested and the search parameters
 def ga_search(cm,fault_activations,detectable_faults,variables,theta_lr,nP=1000,nI=600,pC=1,mu_o=0.05):
     #seeds=
-
     mu=mu_o
     mso_size=len(cm)
     cm=np.array(cm)

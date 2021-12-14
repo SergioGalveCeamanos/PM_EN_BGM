@@ -29,21 +29,48 @@ if True:
     aggSeconds=1
     NEW_TIMEOUT=600
     file, folder = file_location(device,version)
-    fm=load_model(file, folder)
+    f=load_model(file, folder)
     mso=0
     t=0
-    new_data=fm.training_data
+    fm=f.models[f.mso_set[mso]]
+    new_data=f.training_data
     normed_predict_data=fm.get_prediction_input(new_data)
     measured_value=normed_predict_data[fm.objective]
     source_value=normed_predict_data[fm.source]
     contour_cond=normed_predict_data[fm.cont_cond]
     groups=fm.bgm.predict(contour_cond.values)
-    predictions=np.zeros(source_value.shape[0])
+    predictions=np.zeros(source_value.shape[0]) # not that useful now
     probs=np.zeros([source_value.shape[0],len(fm.regions)])
+    
     locats=np.where(groups == t)[0]
     selection=source_value.iloc[locats]
     cont_selec=contour_cond.iloc[locats]
+    reference=measured_value.iloc[locats]
     if selection.shape[0]!=0:
-        predictions[locats]=fm.model[t]['model'].predict(selection)
+        forecasted=fm.model[t]['model'].predict(selection)
+        error = reference - forecasted  
+        
+#define optimization problem
+if True:
+    def toVector(w, z):
+        assert w.shape == (2, 4)
+        assert z.shape == (2, 4)
+        return np.hstack([w.flatten(), z.flatten()])
+
+    def toWZ(vec):
+        assert vec.shape == (2*2*4,)
+        return vec[:2*4].reshape(2,4), vec[2*4:].reshape(2,4)  
+ 
+    def doOptimization(f_of_w_z, w0, z0):
+        def f(x): 
+            w, z = toWZ(x)
+            return f_of_w_z(w, z)
+        result = minimize(f, toVec(w0, z0))
+        # Different optimize functions return their
+        # vector result differently. In this case it's result.x:
+        result.x = toWZ(result.x) 
+        return result
+    #https://stackoverflow.com/questions/31292374/how-do-i-put-2-matrix-into-scipy-optimize-minimize
+    nor=np.linalg.norm(telem.dot(fm.hos[t]),ord=1)
     
     

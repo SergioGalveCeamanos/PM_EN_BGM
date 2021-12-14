@@ -789,6 +789,7 @@ if True:
                             q.join()
                         sub_batch=[] 
                 first=True
+                data=None
                 for df in shared_list:
                     if first:
                         data=df
