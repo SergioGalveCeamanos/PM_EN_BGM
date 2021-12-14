@@ -314,50 +314,57 @@ def norm(x,train_stats):
             y[name].append(a)  #.apply(lambda num: (num-train_stats.loc[name,'mean'])/train_stats.loc[name,'std'])
     return pd.DataFrame(y)
 
+if False:
+    solvers.options['feastol']=1e-6
+    data_dic={}
+    for var in var_names:
+        data_dic[var]=telemetry[var].values.flatten()
+    data_train=pd.DataFrame(data_dic) 
+    train_stats=data_train.describe()
+    train_stats = train_stats.transpose()
+    copy_train=copy.deepcopy(data_train)
+    
+    normed_train_data_o = norm(data_train,train_stats)
+    # prepare data to form phi and e --> Filtered to 1 region from 1 MSO
+    #e=np.abs(np.matrix([0.5,0.2,-0.4,0.8,0.6,0.1,-0.3,0.7]))
+    #phi=np.matrix([[0.8,2],[0.1,1.2],[0.3,0.9],[0.6,3],[0.3,1.6],[0.4,2.1],[0.1,0.7],[0.6,2]])
+    mso=0
+    group= 0
+    source=['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'DscgTempCirc1', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser']
+    objective='EvapTempCirc1'
+    # find the samples belonging to one group
+    selection=[]
+    i=-1
+    for prob in groups[mso]:
+        i=i+1
+        if prob[group]==1:
+            selection.append(i)
+            
+    size=len(selection) # reduce the size to avoid the memory issues 
+    offset=1000
+    sets=10
+    selection=random.sample(selection, size)
+    # select the error
+    e=np.abs(np.take(np.matrix(error[0]),selection))
+    # order it and start taking sets
+    order=np.argsort(e)
+    selection=order
+    e=np.take(e,order)
+    # rearrange for telemetry
+    for name in source:
+        if name==source[0]:
+            phi=np.matrix(np.take(normed_train_data_o[name].values,selection)).T
+        else:
+            phi=np.concatenate((phi,np.matrix(np.take(normed_train_data_o[name].values,selection)).T),axis=1)
 
-solvers.options['feastol']=1e-6
-data_dic={}
-for var in var_names:
-    data_dic[var]=telemetry[var].values.flatten()
-data_train=pd.DataFrame(data_dic) 
-train_stats=data_train.describe()
-train_stats = train_stats.transpose()
-copy_train=copy.deepcopy(data_train)
-
-normed_train_data_o = norm(data_train,train_stats)
-# prepare data to form phi and e --> Filtered to 1 region from 1 MSO
-#e=np.abs(np.matrix([0.5,0.2,-0.4,0.8,0.6,0.1,-0.3,0.7]))
-#phi=np.matrix([[0.8,2],[0.1,1.2],[0.3,0.9],[0.6,3],[0.3,1.6],[0.4,2.1],[0.1,0.7],[0.6,2]])
-mso=0
-group= 0
-source=['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'DscgTempCirc1', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser']
-objective='EvapTempCirc1'
-# find the samples belonging to one group
-selection=[]
-i=-1
-for prob in groups[mso]:
-    i=i+1
-    if prob[group]==1:
-        selection.append(i)
+else:
+    with open('error.pkl', 'rb') as handle:
+        e = pickle.load(handle)
+    with open('phi.pkl', 'rb') as handle:
+        phi = pickle.load(handle)
         
-size=len(selection) # reduce the size to avoid the memory issues 
-offset=1000
-sets=10
-selection=random.sample(selection, size)
-# select the error
-e=np.abs(np.take(np.matrix(error[0]),selection))
-# order it and start taking sets
-order=np.argsort(e)
-selection=order
-e=np.take(e,order)
-# rearrange for telemetry
-for name in source:
-    if name==source[0]:
-        phi=np.matrix(np.take(normed_train_data_o[name].values,selection)).T
-    else:
-        phi=np.concatenate((phi,np.matrix(np.take(normed_train_data_o[name].values,selection)).T),axis=1)
-
-
+        
+        
 # instead of imposing the limit on t, we pose it on phi*x>|e| --> forces x to project always on possitive values 
 def option_B(e,phi,sigma=1,alpha=1,beta=0.00001):
     solvers.options['show_progress'] = True
@@ -691,24 +698,26 @@ def plots_X(estims,n):
     plt.show()
     # xs vs phi
 
-def GA_selection():
+#def GA_selection():
     
 # Experiment 1 - Simple case where only 1 projection is used (small sample set due to memory)
 if True:
-    n = phi.shape[1]
-    k =phi.shape[0]
+    E=1   
+    S=2000
+    n = phi[-S:-E,:].shape[1]
+    k =phi[-S:-E,:].shape[0]
     z_l=n+k
-    res=option_B(e,phi)
+    res=option_C(e[:,-S:-E],phi[-S:-E,:])
     z=np.array(list(res['x']))
     x=z[:n]
     t=z[n:]
     fig = plt.figure(figsize=(15.0, 10.0))
     xs=np.linspace(0,k-1,k)
     #plt.plot(xs, np.ravel(np.matmul(phi,x)).flatten(), "o", markersize=4, color='blue', alpha=0.5)
-    order=np.argsort(np.ravel(e))
-    plt.plot(xs, np.take(np.ravel(np.matmul(phi,x)).flatten(),order), "-", linewidth=2, color='silver', alpha=0.6,label='error estimation')
+    order=np.argsort(np.ravel(e[:,-S:-E]))
+    plt.plot(xs, np.take(np.ravel(np.matmul(phi[-S:-E,:],x)).flatten(),order), "-", linewidth=2, color='silver', alpha=0.6,label='error estimation')
     #plt.plot(xs, np.ravel(e), "o", markersize=4, color='red', alpha=0.5)
-    plt.plot(xs, np.take(np.ravel(e),order), "-", linewidth=2, color='gold', alpha=0.6,label='real error')
+    plt.plot(xs, np.take(np.ravel(e[:,-S:-E]),order), "-", linewidth=2, color='gold', alpha=0.6,label='real error')
     plt.legend()
 
 # Experiment 2 - Iteratively generate new projections that take the slack left by the previous one (small sample set due to memory)
@@ -717,14 +726,14 @@ def moving_average(a, n=20) :
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 if True:
-    projections=10
+    projections=1
     colours=iter(CM.Spectral(np.linspace(0,1,(projections))))
-    n = phi.shape[1]
-    k =phi.shape[0]
+    n = phi[-S:-E,:].shape[1]
+    k =phi[-S:-E,:].shape[0]
     z_l=n+k
     results={}
     estims=[]
-    err=copy.deepcopy(e[:,-1000:])
+    err=copy.deepcopy(e[:,-S:-E])
     reduction=0.1 
     mav=10
     order=np.argsort(np.ravel(err))
@@ -735,16 +744,16 @@ if True:
     for i in range(projections):
         c=next(colours)
         print(err[err == 0].shape)
-        res=option_B(err,phi[-1000:,:],sigma=reduction)
+        res=option_B(err,phi[-S:-E,:],sigma=reduction)
         z=np.array(list(res['x']))
         ax_e.plot(xs, np.take(np.ravel(err),order), "-", linewidth=2, color=c, alpha=0.6,label='real error stage #'+str(i))
         results[i]=z
         x=z[:n]
         t=z[n:]
-        err=err-np.matmul(phi[-1000:,:],x)
+        err=err-np.matmul(phi[-S:-E,:],x)
         err[err <= 0] = 0
-        estims.append(np.ravel(np.matmul(phi[-1000:,:],x)).flatten())
-        ma=moving_average(np.take(np.ravel(np.matmul(phi[-1000:,:],x)).flatten(),order),n=mav)
+        estims.append(np.ravel(np.matmul(phi[-S:-E,:],x)).flatten())
+        ma=moving_average(np.take(np.ravel(np.matmul(phi[-S:-E,:],x)).flatten(),order),n=mav)
         ax_p.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=c, alpha=0.6,label='estimation prj#'+str(i))
     plt.legend()
     plt.show()
@@ -803,12 +812,13 @@ if True:
 
 # Experiment 4 - It is just not working to fit so many samples in 1 projection | With LP and a simple case 
 if True:
-    m=5
+    m=3
     N=1000
     colours=iter(CM.Spectral(np.linspace(0,1,(m))))
     n = phi.shape[1]
     k = N
     z_l=n+k
+    i=0
     results={}
     estims=[]
     err=copy.deepcopy(e[:,-N:])
@@ -824,21 +834,22 @@ if True:
     print(err[err == 0].shape)
     res=option_C(err,fi,m=m)
     z=np.array(list(res['x']))
-    ax_e.plot(xs, np.take(np.ravel(err),order), "-", linewidth=2, color=og_c, alpha=0.6,label='real error stage #'+str(i))
+    ax_e.plot(xs, np.take(np.ravel(err),order), "-", linewidth=2, color=og_c, alpha=0.6,label='real error')
     results[i]=z
+    x=z[:m*n]
+    t=z[m*n:]
     pff=np.zeros([m*n,k]).T
     for j in range(m):
         c=next(colours)
         pff[:,j*n:(j+1)*n]=fi
         ma=moving_average(np.take(np.ravel(np.matmul(fi,x[j*n:(j+1)*n])).flatten(),order),n=mav)
-        ax_p.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=c, alpha=0.6,label='estimation prj#'+str(i))
-    x=z[:m*n]
-    t=z[m*n:]
+        ax_p.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=c, alpha=0.6,label='estimation prj#'+str(j))
+    
     err=err-np.matmul(pff,x)
     err[err <= 0] = 0
     estims.append(np.ravel(np.matmul(pff,x)).flatten())
     ma=moving_average(np.take(np.ravel(np.matmul(pff,x)).flatten(),order),n=mav)
-    ax_p.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=og_c, alpha=0.6,label='estimation prj#'+str(i))
+    ax_p.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=og_c, alpha=0.6,label='Total estimation prj')
     plt.legend()
     plt.show()
 
@@ -970,7 +981,7 @@ if True:
         print(err[err == 0].shape)
         res=option_C(err,fi)
         z=np.array(list(res['x']))
-        ax_e.plot(xs, np.ravel(err), "-", linewidth=2, color=og_c, alpha=0.6,label='real error stage #'+str(i))
+        ax_e.plot(xs, np.ravel(err), "-", linewidth=2, color=og_c, alpha=0.6,label='real error')
         results[i]=z
         x=z[:n]
         t=z[n:]
@@ -978,11 +989,12 @@ if True:
         c=next(colours)
         pff=fi
         ma=moving_average(np.take(np.ravel(np.matmul(fi,x)).flatten(),order),n=mav)
-        ax_e.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=c, alpha=0.6,label='estimation prj#'+str(i))
+        ax_e.plot(xs[:ma.shape[0]], ma, "-", linewidth=2,color=c, alpha=0.6,label='estimation')
         err=err-np.matmul(pff,x)
         #err[err <= 0] = 0
         estims.append(np.ravel(np.matmul(pff,x)).flatten())
-    plt.legend()
+        ax_e.title.set_text('Variables {} to {}'.format(i,i+2))
+        plt.legend()
     plt.show()
 
 # Experiment 8 - again to option F as a copy of C to be modified, we will run many random trainings with few samples 
@@ -1040,7 +1052,7 @@ if True:
 # Experiment 9 - smaller errors and seeing what remains to train new Xs (random data)
 if True:
     l= 3 # number of projections to be combined
-    E=1
+    E=1000
     S=10000
     pfi=phi[-S:-E,:]
     er=e[:,-S:-E]
@@ -1093,7 +1105,7 @@ if True:
             estims[i].append(x)
             plt.legend()
     plt.show()
-    #plots_X(estims,n)
+    plots_X(estims,n)
 
 # Experiment 10 - get a 1000 different random combinations but  
 if True:
@@ -1109,7 +1121,7 @@ if True:
     results={}
     estims=[]
     #fig = plt.figure(figsize=(15.0, 15.0))
-    for i in range(m-2):
+    for i in range(m):
         subset=np.random.choice(er.shape[1], N)
         # select the error
         err=np.abs(np.take(er,subset))
@@ -1144,11 +1156,11 @@ if True:
         #err[err <= 0] = 0
         estims.append(x)
         #plt.legend()
-    #plt.show()
+    plt.show()
     plots_X(estims,n) 
     # now with the results we use it to randomly generate Hs 
     set_x=copy.deepcopy(estims)
-    h_sizes= [50,100,500,1000]
+    h_sizes= [10,20,80,120,500]
     lims=0.5
     q=-1
     fig, axes = plt.subplots(len(h_sizes) , 1, figsize=(10, 10))
@@ -1166,12 +1178,12 @@ if True:
         many_bounds=np.matmul(pfi,H_x.T)
         df_est=pd.DataFrame(many_bounds.T)
         stats=df_est.describe().transpose()
-        bound=np.ravel(np.sum(many_bounds,axis=1)/many_bounds.shape[1])
+        bound=stats['max'].values#np.ravel(np.sum(many_bounds,axis=1)/many_bounds.shape[1])
         up=bound+lims*np.ravel(stats['std'].values)
         low=bound-lims*np.ravel(stats['std'].values) 
         axes[q].plot(xs, np.ravel(er), "-", linewidth=2, color=og_c, alpha=0.6,label='real error')
-        axes[q].plot(xs, bound, "-", linewidth=2, color='crimson', alpha=0.5,label='bound')
-        axes[q].fill_between(xs, np.ravel(up), np.ravel(low), "-", linewidth=2, color='crimson', alpha=0.2,label='bound')
+        axes[q].plot(xs, bound, "-", linewidth=1, color='crimson', alpha=0.5,label='bound')
+        axes[q].fill_between(xs, np.ravel(up), np.ravel(low), "-", linewidth=1, color='crimson', alpha=0.2,label='bound')
         axes[q].title.set_text('H size: {}'.format(h_size))
         axes[q].legend()
     plt.show()

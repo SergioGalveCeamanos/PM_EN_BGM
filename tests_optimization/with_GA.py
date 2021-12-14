@@ -22,6 +22,7 @@ import matplotlib.transforms as transforms
 import pickle
 import datetime
 import math
+from sklearn.linear_model import LinearRegression
 
 if False:
     def get_index_analytics(date, ty):
@@ -507,7 +508,7 @@ def prepare_H(pop,chosen):
     return H_x
 
 # the bigger the ascending tendency the bigger the reward 
-def h_leaning(b,n=10):
+def h_leaning_og(b,n=100):
     reward=0
     b=b/np.mean(b)
     k=b.shape[0]
@@ -522,13 +523,21 @@ def h_leaning(b,n=10):
         reward=reward+step
         last=new
     return 1/reward
+
+# in this one we fit a line and take the steepness as a parameter
+def h_leaning(b,xs):
+    reg = LinearRegression().fit(xs.reshape(1, -1).T, b.reshape(1, -1).T)
+    reward=reg.coef_[0][0]#** (1./3.)
+    if reward<0:
+        reward=0.00000000000001
+    return 1/reward
         
-def ranking_h(pop,phi):
+def ranking_h(pop,phi,xs):
     scores=[]
     for p in pop:
         H_x=np.matrix(p)
         bound=np.ravel(np.matmul(phi,H_x.T))
-        scores.append(h_leaning(bound))
+        scores.append(h_leaning(bound,xs))
     # get rid of values smaller than 0
     scores=np.array(scores)
     least=min(abs(scores))
@@ -536,37 +545,51 @@ def ranking_h(pop,phi):
     return scores/sum(scores)
 
 # 4 elements to evaluate how well it works
-def sig_cost(sig_P,pop,err,phi,epsi=50,gamma=2.5,thet=0.4,show=False):
-    H_x=prepare_H(pop,sig_P)
-    many_bounds=np.matmul(phi,H_x.T)
-    df_est=pd.DataFrame(many_bounds.T)
-    #stats=df_est.describe().transpose()
-    bound=np.ravel(np.sum(many_bounds,axis=1)/many_bounds.shape[1])
-    dif=np.ravel(err-bound)
+#def get_bounds(h,phi)
+def sig_cost(pop,err,phi,xs,sig_P=[],epsi=10,gamma=1.0,thet=1,eps_2=10,show=False,bound=[],baseline=[1,1,1]):
+    if len(bound)==0:
+        H_x=prepare_H(pop,sig_P)
+        many_bounds=np.matmul(phi,H_x.T)
+        #df_est=pd.DataFrame(many_bounds.T) 
+        #stats=df_est.describe().transpose()
+        #df_est=pd.DataFrame(many_bounds.T)
+        #stats=df_est.describe().transpose()
+        #bound=stats['max'].values
+        bound=np.ravel(np.max(many_bounds,axis=1))
+        n=many_bounds.shape[0]
+        #bound=np.ravel(np.linalg.norm(many_bounds,ord=1,axis=1))/n
+    else:
+        n=bound.shape[0]
+    dif=np.ravel(bound-err)
     #l=len(dif[dif<0])
-    n=many_bounds.shape[0]
-    homog=gamma*np.std(dif)/np.std(bound)
-    squares=thet*np.sum((dif/np.mean(np.abs(dif)))**4)/n
+    #homog=gamma*np.std(dif)/np.std(bound)
+    squares=(thet*np.sum((dif)**2)/n)/baseline[1] #/np.mean(np.abs(dif))
     dif[dif<0]=-epsi*dif[dif<0]
-    sums=np.sum(dif)/n
-    tendency=h_leaning(bound)
-    total_cost=(sums+homog+squares)*tendency
+    sums=(eps_2*np.sum(dif)/n)/baseline[0]
+    tendency=0.5+max(0,1-baseline[2]/h_leaning(bound,xs)) # th bigger hl the smaller it is substracted to 1
+    total_cost=(sums+squares)*tendency #homog
     #up=bound+lims*np.ravel(stats['std'].values)
     #low=bound-lims*np.ravel(stats['std'].values) 
     if show:
-        print('   [D] Total costs: {} |  diff: {} | homogeneity: {} | squares: {} | tendency: {}'.format(total_cost,sums,homog,squares,tendency))
-    return total_cost
+        #print('   [D] Total costs: {} |  diff: {} | homogeneity: N/A | squares: {} | tendency: {}'.format(total_cost,sums,squares,tendency))
+        return total_cost,sums,squares,tendency
+    else:
+        return total_cost
 
 def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
-def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False,seeds='seeds.pkl'):
+def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False,seeds='seeds.pkl',report=10):
     mu=mu_o
     n=len(pop)
     parents=pd.DataFrame({'cost':[],'signature':[]})
     xs=np.linspace(0,err.shape[1]-1,err.shape[1])
     t_a=datetime.datetime.now()
+    # we get a baseline value
+    ideal=np.ravel(err)+np.min(err)/2
+    total_cost,sums,squares,tendency=sig_cost(pop,err,phi,xs,show=True,bound=ideal)
+    tendency=h_leaning(ideal,xs)
     print('START CREATING EVA POPULATION')
     #load seeds that worked well before
     unseeded=False
@@ -578,7 +601,7 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
         unseeded=True
         init=[]
     # now not so random - we prefer the ones that go in the direction of the ascending error
-    scores=ranking_h(pop,phi)
+    scores=ranking_h(pop,phi,xs)
     prob_sc=np.cumsum(scores)
     #initialize parents
     for i in range(nP):
@@ -588,7 +611,7 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
             for m in init[i]:
                 sig_P[m]=1
         else:
-            siz=np.random.choice(int(n/20), 1)
+            siz=np.random.choice(int(n/50), 1)
             if sum(siz)==0:
                 siz=np.array([4])
             rands=np.random.random(siz)
@@ -596,7 +619,7 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
             for m in rands:
                 pos=find_nearest(prob_sc,m)
                 sig_P[pos]=1
-        cost_P=sig_cost(sig_P,pop,err,phi)
+        cost_P=sig_cost(pop,err,phi,xs,sig_P=sig_P,baseline=[sums,squares,tendency])
         parents=parents.append({'cost':cost_P,'signature':sig_P},ignore_index=True)   
     t_b=datetime.datetime.now()
     dif=t_b-t_a
@@ -610,6 +633,7 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
     stop_2=True
     stop_3=True
     t_a=datetime.datetime.now()
+    costs={'Total':[],'Sum Error':[],'Squared Error':[],'Tendency':[]}
     for i in range(nI):
         t_a=datetime.datetime.now()
         #t_a=datetime.datetime.now()
@@ -624,8 +648,8 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
             ch1_mut=mutate(ch1_sig,mu)
             ch2_mut=mutate(ch2_sig,mu)
             # evaluate children and load the table of children
-            ch1_cost=sig_cost(ch1_mut,pop,err,phi)
-            ch2_cost=sig_cost(ch2_mut,pop,err,phi)
+            ch1_cost=sig_cost(pop,err,phi,xs,sig_P=ch1_mut,baseline=[sums,squares,tendency])
+            ch2_cost=sig_cost(pop,err,phi,xs,sig_P=ch2_mut,baseline=[sums,squares,tendency])
             children=children.append({'cost':ch1_cost,'signature':ch1_mut},ignore_index=True)
             children=children.append({'cost':ch2_cost,'signature':ch2_mut},ignore_index=True)
         # mix with parents in new population, sort, check best and do all over again
@@ -646,22 +670,32 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
         print(' [I] TOTAL TIME OF ITERATION #'+str(i)+' | is:  '+str(dif))
         #print(best_ever)
         #sum(best_ever['signature'])
-        if (i%5)==0:
+        a,b,c,d=sig_cost(pop,err,phi,xs,sig_P=best_ever['signature'],show=True,baseline=[sums,squares,tendency])
+        costs['Total'].append(a)
+        costs['Sum Error'].append(b)
+        costs['Squared Error'].append(c)
+        costs['Tendency'].append(d)
+        if (i%report)==0:
             print('Completed Iteration #'+str(i))
             t_b=datetime.datetime.now()
             dif=t_b-t_a
             print('   [I] TOTAL TIME OF ITERATION #'+str(i)+' | is:  '+str(dif))
+            print('   [D] Total costs: {} |  diff: {} | squares: {} | tendency: {}'.format(costs['Total'][-1],costs['Sum Error'][-1],costs['Squared Error'][-1],costs['Tendency'][-1]))
             print(list(np.where(best_ever['signature']==1)[0]))
             if in_spyder:
                 H_x=prepare_H(pop,best_ever['signature'])
                 many_bounds=np.matmul(phi,H_x.T)
                 df_est=pd.DataFrame(many_bounds.T)
                 #stats=df_est.describe().transpose()
-                bound=np.ravel(np.sum(many_bounds,axis=1)/many_bounds.shape[1])
+                bound=np.ravel(np.max(many_bounds,axis=1))#np.ravel(np.linalg.norm(many_bounds,ord=1,axis=1))/many_bounds.shape[0]
                 #up=bound+lims*np.ravel(stats['std'].values)
                 #low=bound-lims*np.ravel(stats['std'].values) 
                 fig = plt.figure(figsize=(15.0, 15.0))
-                ma=moving_average(np.ravel(bound),n=100)
+                ma=moving_average(np.ravel(bound),n=5)
+                reg_ideal = LinearRegression().fit(xs.reshape(1, -1).T, ideal.reshape(1, -1).T)
+                reg_best = LinearRegression().fit(xs.reshape(1, -1).T, np.ravel(bound).reshape(1, -1).T)
+                plt.plot(xs, reg_ideal.predict(xs.reshape(1, -1).T), "-", linewidth=2, color='orange', alpha=0.7,label='lin reg ideal')
+                plt.plot(xs, reg_best.predict(xs.reshape(1, -1).T), "-", linewidth=2, color='blue', alpha=0.7,label='lin reg best')
                 plt.plot(xs, np.ravel(err), "-", linewidth=2, color='gold', alpha=0.8,label='real error')
                 plt.plot(xs[:len(ma)], ma, "-", linewidth=2, color='crimson', alpha=0.5,label='bound')
                 #plt.fill_between(xs, np.ravel(up), np.ravel(low), "-", linewidth=2, color='crimson', alpha=0.2,label='bound')
@@ -669,14 +703,14 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
                 plt.title('Round #{}'.format(i))
                 plt.show()
             print('   [I] Number of h_i used: '+str(sum(best_ever['signature'])))
-            sig_cost(best_ever['signature'],pop,err,phi,show=True)
+            
             #t_a=datetime.datetime.now()
         #sig_cost(cm,fault_activations,children.iloc[3]['signature'],detectable_faults,show=True)
         #t_b=datetime.datetime.now()
         #dif=t_b-t_a
         #☺print('   [I] total time of iteration is:  '+str(dif))
     with open('resulting_H.pkl', 'wb') as handle:
-        pickle.dump(parents.head(100), handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump({'top_parents':parents.head(100),'costs_iteration':costs}, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
     # last save of seeds for next runs
     next_seeds=[]
@@ -684,7 +718,15 @@ def ga_search(pop,err,phi,nP=500,nI=500,pC=1,mu_o=0.075,lims=0.5,in_spyder=False
         next_seeds.append(list(np.where(parents.iloc[i]['signature']==1)[0]))
     with open(seeds, 'wb') as handle:
         pickle.dump(next_seeds, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    return best_ever
+    if in_spyder:
+        fig = plt.figure(figsize=(15.0, 15.0))
+        plt.plot(costs['Total'], "-", linewidth=2, color='blue', alpha=0.5,label='Total Error')
+        plt.plot(costs['Sum Error'], "-", linewidth=2, color='orange', alpha=0.5,label='Sums')
+        plt.plot(costs['Squared Error'], "-", linewidth=2, color='yellow', alpha=0.5,label='Squares')
+        plt.plot(costs['Tendency'], "-", linewidth=2, color='crimson', alpha=0.5,label='Tendency')
+        plt.title('Training Cost Convergence')
+        plt.show()
+    return best_ever,parents.head(100),costs
 
 # plot the features of a population of Xs
 def plots_X(estims,n):
@@ -741,7 +783,7 @@ def plots_X(estims,n):
 not_recorded=False
 # 1 - N=15 samples to fit projection in Opt, 2 - N=[10,20,40,80,160,320] evenly distributed
 populations=['population_pool.pkl','population_pool_2.pkl']
-selected_pop=0
+selected_pop=1
 try:
     with open(populations[selected_pop], 'rb') as handle:
         estims = pickle.load(handle)
@@ -781,7 +823,7 @@ if not_recorded:
         #ax_e = fig.add_subplot(5,2,i+1)
         og_c='gold'
         print(err[err == 0].shape)
-        ############ OPTIMIZATION #############
+        ############ OPTIMIZATION ############# 
         res=option_C(err,fi)
         z=np.array(list(res['x']))
         #ax_e.plot(xs, np.ravel(err), "-", linewidth=2, color=og_c, alpha=0.6,label='real error stage #'+str(i))
@@ -797,9 +839,16 @@ if not_recorded:
         pickle.dump(estims, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # launch the search
-E=100
-S=40000
-#best_ever=ga_search(estims,e[:,-S:-E],phi[-S:-E,:],seeds='seeds_141221_newPop_4Cost.pkl',nP=100,nI=50,in_spyder=True) #,nP=10,nI=10,in_spyder=True,
+if selected_pop==1:
+    E=1   
+    S=5000 #[:,-S:-E] [-S:-E,:]
+    best_ever,tops,costs=ga_search(estims,e[:,-S:-E] ,phi[-S:-E,:],seeds='seeds_141221_testNight5000Sam_Nrang.pkl',nP=1200,nI=801,report=200,in_spyder=True)
+else:
+    E=1   
+    S=1000 #[:,-S:-E] [-S:-E,:]
+    #best_ever,tops,costs=ga_search(estims,e[:,-S:-E] ,phi[-S:-E,:],seeds='seeds_141221_worst_error_N15.pkl',nP=200,nI=100,report=10) #,nP=10,nI=10,in_spyder=True,
+#print(costs)
 #'seeds_131221.pkl','seeds_131221_variableNpop.pkl','seeds_131221_extraCost.pkl',
 # FINAL RUN WITH ranged N | 'seeds_141221_newPop_4Cost.pkl'
 # FINAL RUN WITH N=15 | 'seeds_141221_extraCost.pkl'
+# FINAL RUN WITH N=15 - Only last 2000 samples | 'seeds_141221_worst_error_N15.pkl'
