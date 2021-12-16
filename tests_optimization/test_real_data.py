@@ -702,7 +702,7 @@ def plots_X(estims,n):
     
 # Experiment 1 - Simple case where only 1 projection is used (small sample set due to memory)
 if True:
-    E=1   
+    E=1000   
     S=2000
     n = phi[-S:-E,:].shape[1]
     k =phi[-S:-E,:].shape[0]
@@ -813,7 +813,8 @@ if True:
 # Experiment 4 - It is just not working to fit so many samples in 1 projection | With LP and a simple case 
 if True:
     m=3
-    N=1000
+    N=2000
+    S=1000
     colours=iter(CM.Spectral(np.linspace(0,1,(m))))
     n = phi.shape[1]
     k = N
@@ -821,7 +822,7 @@ if True:
     i=0
     results={}
     estims=[]
-    err=copy.deepcopy(e[:,-N:])
+    err=copy.deepcopy(e[:,-N:-S])
     reduction=0.1 
     mav=10
     order=np.argsort(np.ravel(err))
@@ -829,7 +830,7 @@ if True:
     fig = plt.figure(figsize=(15.0, 10.0))
     ax_e = fig.add_subplot(2,1,1)
     ax_p = fig.add_subplot(2,1,2)
-    fi=phi[-N:,:]
+    fi=phi[-N:-S,:]
     og_c='gold'
     print(err[err == 0].shape)
     res=option_C(err,fi,m=m)
@@ -949,8 +950,8 @@ if True:
 
 # Experiment 7 - just to see ... using fewer vars we can find something ? or missing out one each time? - Back to option C (classics)
 if True:    
-    E=1
-    S=10000
+    E=1000
+    S=2000
     pfi=phi[-S:-E,:]
     er=e[:,-S:-E]
     m=phi.shape[1]
@@ -1051,13 +1052,13 @@ if True:
 
 # Experiment 9 - smaller errors and seeing what remains to train new Xs (random data)
 if True:
-    l= 3 # number of projections to be combined
-    E=1000
+    l= 1 # number of projections to be combined
+    E=1
     S=10000
     pfi=phi[-S:-E,:]
     er=e[:,-S:-E]
     m=10
-    N=20
+    N=50
     n = phi.shape[1]
     k = N
     z_l=n+k
@@ -1085,7 +1086,7 @@ if True:
             og_c='gold'
             #print(err[err == 0].shape)
             ############ OPTIMIZATION #############
-            res=option_C(err,fi,sigma=0.3)
+            res=option_C(err,fi,sigma=1)
             z=np.array(list(res['x']))
             ax_e.plot(xs, np.ravel(err), "-", linewidth=2, color=colours[j], alpha=0.3,label='error #{} proj #{}'.format(i,j))
             results[i]=z
@@ -1136,7 +1137,7 @@ if True:
         xs=np.linspace(0,err.shape[1]-1,err.shape[1])
         colours=iter(CM.Spectral(np.linspace(0,1,(m))))
         #ax_e = fig.add_subplot(5,2,i+1)
-        og_c='gold'
+        og_c='blue'
         print(err[err == 0].shape)
         ############ OPTIMIZATION #############
         res=option_C(err,fi)
