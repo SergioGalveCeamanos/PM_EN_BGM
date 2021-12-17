@@ -6,8 +6,8 @@ Created on Fri Dec 10 09:37:41 2021
 """
 import numpy as np
 import pandas as pd
-#import pickle
-import pickle5 as pickle
+import pickle
+#import pickle5 as pickle
 import copy
 from matplotlib import cm as CM
 from matplotlib.lines import Line2D
@@ -793,22 +793,22 @@ def plots_X(estims,n):
     
 # generate a population of optimal projections where we can search for the best subset 
 not_recorded=False
-# 1 - N=15 samples to fit projection in Opt, 2 - N=[10,20,40,80,160,320] evenly distributed, 3 
-populations=['population_pool.pkl','population_pool_2.pkl','population_pool_3.pkl']
-selected_pop=1
+# 1 - N=15 samples to fit projection in Opt, 2 - N=[10,20,40,80,160,320] evenly distributed, 3 - N=[10,15,20,30,50,80,100] with only the last 5000 samples and 5000 combinations, 4 - N=[10,15,20,30,40,60,100]  1000s/1000h, 5 - N=[10,15,20,30,40,60,100] 500s/1000h
+populations=['population_pool.pkl','population_pool_2.pkl','population_pool_5000N.pkl','population_pool_1000N.pkl','population_pool_500N.pkl']
+selected_pop=4
 try:
     with open(populations[selected_pop], 'rb') as handle:
         estims = pickle.load(handle)
 except:
-    not_recorded=True
+    not_recorded=False
     
 if not_recorded:
     E=1
-    S=20000
+    S=500
     pfi=phi[-S:-E,:]
     er=e[:,-S:-E]
-    m=10000
-    N=[5,10,15,20,30,50,80,100]
+    m=1000
+    N=[10,15,20,30,40,60,100]
     n = phi.shape[1]
     #k = N
     #z_l=n+k
@@ -871,11 +871,14 @@ methods=['max','mean','norm1_n','norm2_n','norm1','norm2']
 # PREPARE A FULL TEST - Permutation of Populations and bound computation
 result={}
 E=1
-S=1000
-popu=1200
-ni=600
+S_s=[5000,5000,5000,1000,500]
+popu=2000
+ni=800
 name='Run_'
-for p in populations[:2]:
+z=-1
+for p in populations:
+    z=z+1
+    S=S_s[z]
     with open(p, 'rb') as handle:
         estims = pickle.load(handle)
     for m in methods:
@@ -885,9 +888,9 @@ for p in populations[:2]:
         best_ever,tops,costs=ga_search(estims,e[:,-S:-E] ,phi[-S:-E,:],seeds=see+'.pkl',nP=popu,nI=ni,report=10,method=m)
         result[see].append(tops)
         result[see].append(costs)
-with open('Test_CrossVal.pkl', 'wb') as handle:
+with open('Test_CrossVal_171221.pkl', 'wb') as handle:
       pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL) 
-    
+  # 'Test_CrossVal.pkl' | 'Test_CrossVal_171221.pkl' | 
 if False:
     with open('Test_CrossVal.pkl', 'rb') as handle:
             result = pickle.load(handle)
@@ -897,6 +900,10 @@ if False:
         for m in methods:
             # now plot it 
             see=name+p[:-4]+'_'+m+'_151221'
+            print('------ Case: '+see)
+            print(result[see][0].head(10))
+            for i in range(10):
+                print(list(np.where(result[see][0].iloc[i]['signature']==1)[0]))
             pop=estims
             ph=phi[-S:-E,:]
             err=e[:,-S:-E]
@@ -925,8 +932,9 @@ if False:
 
 
 if False:
-    init=[1915, 2105, 2190, 2337, 2353, 2752, 4316, 5858, 8456, 8594, 8735]
+    init=[136, 399, 964, 1148, 1820, 1906, 1952, 2044, 2105, 2211, 2358, 2412, 2622, 3217, 3474, 3608, 3632, 3653, 3837, 4177, 4237, 4697, 4739, 4785, 4970, 5189, 5291, 5365, 5479, 5502, 5612, 5660, 5763, 6107, 6139, 6168, 6206, 6348, 6354, 6387, 6396, 6507, 6647, 6856, 7101, 7409, 7420, 7594, 7661, 7741, 7819, 7902, 7999, 8073, 8273, 8279, 8385, 9176, 9196, 9288, 9491, 9739]
     selected_pop=1
+    meth='max'
     with open(populations[selected_pop], 'rb') as handle:
         estims = pickle.load(handle)
     E=1   
@@ -944,7 +952,7 @@ if False:
         sig_P[m]=1
     H_x=prepare_H(pop,sig_P)
     many_bounds=np.matmul(ph,H_x.T)
-    bound=make_bounds(H_x,ph,method='norm2')
+    bound=make_bounds(H_x,ph,method=meth)
     fig = plt.figure(figsize=(15.0, 15.0))
     ma=moving_average(np.ravel(bound),n=2)
     reg_ideal = LinearRegression().fit(xs.reshape(1, -1).T, ideal.reshape(1, -1).T)
