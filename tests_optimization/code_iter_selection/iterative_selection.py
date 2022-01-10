@@ -563,7 +563,7 @@ def make_bounds(H_x,phi,method='max'):
         bound=np.ravel(np.linalg.norm(many_bounds,ord=2,axis=1))
     return bound
 # 4 elements to evaluate how well it works
-def sig_cost(pop,err,phi,xs,sig_P=[],epsi=1000,gamma=1.0,thet=1,eps_2=10,show=False,bound=[],baseline=[1,1,1],method='max'):
+def sig_cost(pop,err,phi,xs,sig_P=[],sig=3,epsi=500,gamma=1.0,thet=1,eps_2=10,show=False,bound=[],baseline=[1,1,1],method='max'):
     if len(bound)==0:
         H_x=prepare_H(pop,sig_P)
         #many_bounds=np.matmul(phi,H_x.T)
@@ -579,15 +579,18 @@ def sig_cost(pop,err,phi,xs,sig_P=[],epsi=1000,gamma=1.0,thet=1,eps_2=10,show=Fa
     dif=np.ravel(bound-err)
     #l=len(dif[dif<0])
     #homog=gamma*np.std(dif)/np.std(bound)
-    squares=(thet*np.sum((dif)**2)/n)/baseline[1] #/np.mean(np.abs(dif))
+    squares=thet*(np.sum((dif)**2)/n)/baseline[1] #/np.mean(np.abs(dif))
     dif[dif<0]=-epsi*dif[dif<0]
-    sums=(eps_2*np.sum(dif)/n)/baseline[0]
-    tendency=0.5+max(0,1-baseline[2]/h_leaning(bound,xs)) # th bigger hl the smaller it is substracted to 1
+    sums=eps_2*(np.sum(dif)/n)/baseline[0]
+    tendency=0.5+sig*max(0,1-baseline[2]/h_leaning(bound,xs)) # th bigger hl the smaller it is substracted to 1
     total_cost=(sums+squares)*tendency #homog
     #up=bound+lims*np.ravel(stats['std'].values)
     #low=bound-lims*np.ravel(stats['std'].values) 
     if show:
         #print('   [D] Total costs: {} |  diff: {} | homogeneity: N/A | squares: {} | tendency: {}'.format(total_cost,sums,squares,tendency))
+        print('Squares -> base={} | thet={}'.format((np.sum((dif)**2)/n)/baseline[1],thet))
+        print('Sums -> base={} | eps2={}'.format((np.sum(dif)/n)/baseline[0],eps_2))
+        print('Tendency -> base={} | sig={}'.format(0.5+max(0,1-baseline[2]/h_leaning(bound,xs)),sig))
         return total_cost,sums,squares,tendency
     else:
         return total_cost
@@ -597,13 +600,13 @@ def find_nearest(array, value):
     return idx
 
 # the plot simply given the pop and the sig
-def the_sig_plot(sig,pop,phi,err,method,xs,ideal,name):
+def the_sig_plot(sig,pop,phi,err,method,xs,ideal,name,save=[]):
     H_x=prepare_H(pop,sig)
     bound=make_bounds(H_x,phi,method=method) #np.ravel(np.max(many_bounds,axis=1))
     #up=bound+lims*np.ravel(stats['std'].values)
     #low=bound-lims*np.ravel(stats['std'].values) 
     fig = plt.figure(figsize=(15.0, 15.0))
-    ma=moving_average(np.ravel(bound),n=5)
+    ma=moving_average(np.ravel(bound),n=2)
     reg_ideal = LinearRegression().fit(xs.reshape(1, -1).T, ideal.reshape(1, -1).T)
     reg_best = LinearRegression().fit(xs.reshape(1, -1).T, np.ravel(bound).reshape(1, -1).T)
     plt.plot(xs, reg_ideal.predict(xs.reshape(1, -1).T), "-", linewidth=2, color='orange', alpha=0.7,label='lin reg ideal')
@@ -613,24 +616,31 @@ def the_sig_plot(sig,pop,phi,err,method,xs,ideal,name):
     #plt.fill_between(xs, np.ravel(up), np.ravel(low), "-", linewidth=2, color='crimson', alpha=0.2,label='bound')
     plt.legend()
     plt.title(name)
-    plt.show()
+    if save==[]:
+        plt.show()
+    else:
+        plt.savefig(save)
     
 # one by one, we increase the set choosing the one that gests the best score afterwards
-def iterative_addition(pop,err,phi,report=20,method='max',in_spyder=False,name=''):
+def iterative_addition(pop,err,phi,report=5,method='max',in_spyder=False,name='',sig=3,epsi=500,gamma=1.0,thet=1,eps_2=10):
+    print('Start Case: '+name)
     n=len(pop)
     sig_P=np.zeros(n)
     costs=np.zeros(n)
     xs=np.linspace(0,err.shape[1]-1,err.shape[1])
     #t_a=datetime.datetime.now()
     # we get a baseline value
-    ideal=np.ravel(err)+np.min(err)/2
-    total_cost,sums,squares,tendency=sig_cost(pop,err,phi,xs,show=True,bound=ideal,method=method)
+    ideal=np.ravel(err)+np.min(err)/10
+    # eps2 y thet must be 1 to properly weight later samples
+    total_cost,sums,squares,tendency=sig_cost(pop,err,phi,xs,show=True,bound=ideal,method=method,sig=sig,epsi=epsi,gamma=gamma,thet=1,eps_2=1)
     tendency=h_leaning(ideal,xs)
-    hold=5
+    print(' - BASELINE: {}, {}, {}'.format(sums,squares,tendency))
+    hold=4
     best=10e15
     best_sig=[]
     evolution=[]
     turn=-1
+    t_a=datetime.datetime.now()
     while hold>0:
         turn=turn+1
         for i in range(n):
@@ -639,22 +649,27 @@ def iterative_addition(pop,err,phi,report=20,method='max',in_spyder=False,name='
             if sig_P[i]==1:
                 costs[i]=max(costs)
             else:
-                costs[i]=sig_cost(pop,err,phi,xs,sig_P=cop,baseline=[sums,squares,tendency],method=method)
+                costs[i]=sig_cost(pop,err,phi,xs,sig_P=cop,baseline=[sums,squares,tendency],method=method,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
         sig_P[np.where(costs==min(costs))[0][0]]=1
         evolution.append(min(costs))
         #print('Turn {} --> Cost: {}'.format(turn,min(costs)))
-        if best<min(costs):
+        if (best-min(costs))<best*0.003:
             hold=hold-1
             #print('[*] Hold Removed !')
         else:
             best_sig=copy.deepcopy(sig_P)
             best=min(costs)
         #print(' - Current Signature: '+str(np.where(sig_P==1)[0]))
-        #if in_spyder and turn%report==0:
+        if turn%report==0: #in_spyder and
+            t_b=datetime.datetime.now()
+            dif=t_b-t_a
+            tc,sm,sq,tn=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
+            print('Turn #{} - total time: {} | current best: {} = ({} + {}) x {} '.format(turn,dif,tc,sm,sq,tn))
             #the_sig_plot(sig_P,pop,phi,err,method,xs,ideal,name)
     if in_spyder:
         the_sig_plot(best_sig,pop,phi,err,method,xs,ideal,name)
-    return best_sig
+    tc,sm,sq,tn=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
+    return best_sig, tc,sm,sq,tn
 
 # plot the features of a population of Xs
 def plots_X(estims,n):
@@ -754,7 +769,7 @@ def create_pop(E,S,N,m,phi,e):
 not_recorded=False
 # 1 - N=15 samples to fit projection in Opt, 2 - N=[10,20,40,80,160,320] evenly distributed, 3 - N=[10,15,20,30,50,80,100] with only the last 5000 samples and 5000 combinations, 4 - N=[10,15,20,30,40,60,100]  1000s/1000h, 5 - N=[10,15,20,30,40,60,100] 500s/1000h
 #populations=['population_pool.pkl','population_pool_2.pkl','population_pool_5000N.pkl','population_pool_1000N.pkl','population_pool_500N.pkl']
-segments=[[1,10000],[1,5000],[1,1000],[1000,10000],[1000,5000],[1000,2000]]
+"""segments=[[1,10000],[1,5000],[1,1000],[1000,10000],[1000,5000],[1000,2000]]
 sizes=[1000,4000,8000]
 sets={'full':[10,15,20,30,40,60,100],'smalls':[10,15,20,30],'bigs':[40,60,100,200]}
 methods=['max','mean','norm1_n','norm2_n'] #,'norm1','norm2'
@@ -763,6 +778,7 @@ try:
     with open('populations_set.pkl', 'rb') as handle:
         populations = pickle.load(handle)
 except:
+    print(' [!] Issue loading populations')
     populations={}
     seg_pop={}
     for i in segments:
@@ -772,7 +788,7 @@ except:
                 ex=create_pop(i[0],i[1],sets[j],k,phi,e)
                 populations[new]=ex
                 seg_pop[new]=i
-    with open('populations_set.pkl', 'wb') as handle:
+    with open('populations_set_bigger.pkl', 'wb') as handle:
         pickle.dump(populations, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # we test ALL
@@ -782,10 +798,156 @@ for i in segments:
         for k in sizes:
             new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
             seg_pop[new]=i
+ 
 results={}
 for p in populations:
     for m in methods:
-        name=p+m
-        results[name]=iterative_addition(populations['Pop_E1_S10000_full_m1000'],e[:,-seg_pop[p][1]:-seg_pop[p][0]],phi[-seg_pop[p][1]:-seg_pop[p][0],:],report=5000,method=m,in_spyder=True)
-    
+        name=p+'_'+m
+        # make it so that we can later have a segmented analysis ... put the costs and the errors in a database to make cross checks
+        sig,total_cost,sums,squares,tendency=iterative_addition(populations[p],e[:,-seg_pop[p][1]:-seg_pop[p][0]],phi[-seg_pop[p][1]:-seg_pop[p][0],:],report=5,method=m,in_spyder=True,name=name)
+        results[name]=[sig,[total_cost,sums,squares,tendency]]
+        print('   Run |{}| --> {} = ({} + {}) x {} '.format(name,total_cost,sums,squares,tendency))
+        print(' -------------------- ')
+    with open('Results_050122.pkl', 'wb') as handle:
+        pickle.dump(results, handle, protocol=pickle.HIGHEST_PROTOCOL)"""
+
+# second test ... combinations of parameters - we use bigger populations only for the best configurations found
+segments=[[1,5000],[1000,5000],[1,1000]]
+sizes=[8000]
+sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
+methods=['max','mean','norm1_n'] #,'norm1','norm2'
+selected_pop=4
+set_to_load='populations_set_smaller.pkl'
+try:
+    with open(set_to_load, 'rb') as handle:
+        populations = pickle.load(handle)
+except:
+    print(' [!] Issue loading populations')
+    """populations={}
+    seg_pop={}
+    for i in segments:
+        for j in sets:
+            for k in sizes:
+                new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
+                ex=create_pop(i[0],i[1],sets[j],k,phi,e)
+                populations[new]=ex
+                seg_pop[new]=i
+    with open(set_to_load, 'wb') as handle:
+        pickle.dump(populations, handle, protocol=pickle.HIGHEST_PROTOCOL)"""
+
+seg_pop={}
+for i in segments:
+    for j in sets:
+        for k in sizes:
+            new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
+            seg_pop[new]=i
+
+if True:
+    sig=[3,5,10]
+    epsi=[100,500]
+    eps_2=[5,10]
+    thet=[1,3,6]
+    results={}
+    for p in populations:
+        for m in methods:
+            for s in sig:
+                for ep in epsi:
+                    for e2 in eps_2:
+                        for t in thet:
+                            t_a=datetime.datetime.now()
+                            conf='_{}-{}-{}-{}'.format(int(s),ep,e2,t)
+                            name=p+'_'+m+conf
+                            #make it so that we can later have a segmented analysis ... put the costs and the errors in a database to make cross checks
+                            sig,total_cost,sums,squares,tendency=iterative_addition(populations[p],e[:,-seg_pop[p][1]:-seg_pop[p][0]],phi[-seg_pop[p][1]:-seg_pop[p][0],:],report=2,method=m,in_spyder=False,name=name,sig=s,epsi=ep,thet=t,eps_2=e2)
+                            results[name]=[sig,[total_cost,sums,squares,tendency]]
+                            print('   Run |{}| --> {} = ({} + {}) x {} '.format(name,total_cost,sums,squares,tendency))
+                            t_b=datetime.datetime.now()
+                            dif=t_b-t_a
+                            print('   - Time: {}'.format(dif))
+                            print('   - Date: {}'.format(t_b.isoformat()))
+                            print(' -------------------- ')
+                        with open('Results_deep_100122.pkl', 'wb') as handle:
+                            pickle.dump(results, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+
+#check results -- The case of just exploring populations and methods
+if False:
+    #import pickle5 as pickle
+    with open('Results_deep_050122.pkl', 'rb') as handle:
+        results = pickle.load(handle)
+        
+    segments=[[1,10000],[1,5000],[1,1000],[1000,10000],[1000,5000],[1000,2000]]
+    sizes=[1000,4000,8000]
+    sets={'full':[10,15,20,30,40,60,100],'smalls':[10,15,20,30],'bigs':[40,60,100,200]}
+    methods=['max','mean','norm1_n','norm2_n'] #,'norm1','norm2'
+    selected_pop=4
+    try:
+        with open('populations_set.pkl', 'rb') as handle:
+            populations = pickle.load(handle)
+    except:
+        print(' [!] Issue loading populations')
+    seg_pop={}
+    for i in segments:
+        for j in sets:
+            for k in sizes:
+                new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
+                seg_pop[new]=i
+    root=r"C:\Users\sega01\Desktop\Temporal Files\LUC - Industrial PhD\Online Service\PM_DC_Reg\PM_EN_BGM\tests_optimization\code_iter_selection\test_deep_configurations"        
+    for p in populations:
+        for m in methods:
+            name=p+'_'+m
+            to_s=root+'\Fig_'+p+'_'+m+'.png'
+            n=len(populations[p])
+            xs=np.linspace(0,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1]-1,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1])
+            #t_a=datetime.datetime.now()
+            # we get a baseline value
+            ideal=np.ravel(e[:,-seg_pop[p][1]:-seg_pop[p][0]])+np.min(e[:,-seg_pop[p][1]:-seg_pop[p][0]])/2
+            the_sig_plot(results[name][0],populations[p],phi[-seg_pop[p][1]:-seg_pop[p][0],:],e[:,-seg_pop[p][1]:-seg_pop[p][0]],m,xs,ideal,name,save=to_s)
+            
+#check results -- The case of deep exploring configurations
+if False:
+    #import pickle5 as pickle
+    with open('Results_deep_050122.pkl', 'rb') as handle:
+        results = pickle.load(handle)
+        
+    segments=[[1,5000],[1000,5000],[1,1000]]
+    sizes=[20000]
+    sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
+    methods=['max','mean','norm1_n'] #,'norm1','norm2'
+    selected_pop=4
+    set_to_load='populations_set_refined.pkl'
+    try:
+        with open(set_to_load, 'rb') as handle:
+            populations = pickle.load(handle)
+    except:
+        print(' [!] Issue loading populations')
+    seg_pop={}
+    for i in segments:
+        for j in sets:
+            for k in sizes:
+                new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
+                seg_pop[new]=i
+    root=r"C:\Users\sega01\Desktop\Temporal Files\LUC - Industrial PhD\Online Service\PM_DC_Reg\PM_EN_BGM\tests_optimization\code_iter_selection\test_deep_configurations"        
+    sig=[3,5,10]
+    epsi=[100,500,1000]
+    eps_2=[5,10,20]
+    thet=[1,2,3]
+    for p in populations:
+        for m in methods:
+            for s in sig:
+                for ep in epsi:
+                    for e2 in eps_2:
+                        for t in thet:
+                            conf='_{}-{}-{}-{}'.format(int(s),ep,e2,t)
+                            name=p+'_'+m+conf
+                            to_s=root+'\Fig_'+p+'_'+m+conf+'.png'
+                            n=len(populations[p])
+                            xs=np.linspace(0,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1]-1,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1])
+                            #t_a=datetime.datetime.now()
+                            # we get a baseline value
+                            ideal=np.ravel(e[:,-seg_pop[p][1]:-seg_pop[p][0]])+np.min(e[:,-seg_pop[p][1]:-seg_pop[p][0]])/2
+                            the_sig_plot(results[name][0],populations[p],phi[-seg_pop[p][1]:-seg_pop[p][0],:],e[:,-seg_pop[p][1]:-seg_pop[p][0]],m,xs,ideal,name,save=to_s)
+                            
+# make another evaluations
+# 1 . Which sizes were more used in each case -- identify prefences/tendencies
 
