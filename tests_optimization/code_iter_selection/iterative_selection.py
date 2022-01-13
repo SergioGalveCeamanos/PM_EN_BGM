@@ -25,6 +25,7 @@ import math
 from sklearn.linear_model import LinearRegression
 import traceback
 import copy
+import os
 if False:
     def get_index_analytics(date, ty):
         index = ty+date[5:7]+date[0:4]
@@ -562,6 +563,9 @@ def make_bounds(H_x,phi,method='max'):
     elif method=='norm2':
         bound=np.ravel(np.linalg.norm(many_bounds,ord=2,axis=1))
     return bound
+
+def homog_ratio(err,bound):
+    return np.std(err/bound)/np.std(bound)
 # 4 elements to evaluate how well it works
 def sig_cost(pop,err,phi,xs,sig_P=[],sig=3,epsi=500,gamma=1.0,thet=1,eps_2=10,show=False,bound=[],baseline=[1,1,1],method='max'):
     if len(bound)==0:
@@ -579,19 +583,22 @@ def sig_cost(pop,err,phi,xs,sig_P=[],sig=3,epsi=500,gamma=1.0,thet=1,eps_2=10,sh
     dif=np.ravel(bound-err)
     #l=len(dif[dif<0])
     #homog=gamma*np.std(dif)/np.std(bound)
+    homog=gamma*homog_ratio(err,bound)
     squares=thet*(np.sum((dif)**2)/n)/baseline[1] #/np.mean(np.abs(dif))
+    #negs=np.sum(-epsi*dif[dif<0])
     dif[dif<0]=-epsi*dif[dif<0]
     sums=eps_2*(np.sum(dif)/n)/baseline[0]
     tendency=0.5+sig*max(0,1-baseline[2]/h_leaning(bound,xs)) # th bigger hl the smaller it is substracted to 1
-    total_cost=(sums+squares)*tendency #homog
+    total_cost=(sums+squares)*(tendency+homog) #homog
     #up=bound+lims*np.ravel(stats['std'].values)
     #low=bound-lims*np.ravel(stats['std'].values) 
     if show:
         #print('   [D] Total costs: {} |  diff: {} | homogeneity: N/A | squares: {} | tendency: {}'.format(total_cost,sums,squares,tendency))
-        print('Squares -> base={} | thet={}'.format((np.sum((dif)**2)/n)/baseline[1],thet))
-        print('Sums -> base={} | eps2={}'.format((np.sum(dif)/n)/baseline[0],eps_2))
-        print('Tendency -> base={} | sig={}'.format(0.5+max(0,1-baseline[2]/h_leaning(bound,xs)),sig))
-        return total_cost,sums,squares,tendency
+        #print('Squares -> base={} | thet={}'.format((np.sum((dif)**2)/n)/baseline[1],thet))
+        #print('Sums ration negs: {}'.format(negs/np.sum(dif)))
+        #print('Sums -> base={} | eps2={}'.format((np.sum(dif)/n)/baseline[0],eps_2))
+        #print('Tendency -> base={} | sig={}'.format(0.5+max(0,1-baseline[2]/h_leaning(bound,xs)),sig))
+        return total_cost,sums,squares,tendency,homog
     else:
         return total_cost
 
@@ -623,7 +630,7 @@ def the_sig_plot(sig,pop,phi,err,method,xs,ideal,name,save=[]):
     
 # one by one, we increase the set choosing the one that gests the best score afterwards
 def iterative_addition(pop,err,phi,report=5,method='max',in_spyder=False,name='',sig=3,epsi=500,gamma=1.0,thet=1,eps_2=10):
-    print('Start Case: '+name)
+    #print('Start Case: '+name)
     n=len(pop)
     sig_P=np.zeros(n)
     costs=np.zeros(n)
@@ -632,10 +639,10 @@ def iterative_addition(pop,err,phi,report=5,method='max',in_spyder=False,name=''
     # we get a baseline value
     ideal=np.ravel(err)+np.min(err)/10
     # eps2 y thet must be 1 to properly weight later samples
-    total_cost,sums,squares,tendency=sig_cost(pop,err,phi,xs,show=True,bound=ideal,method=method,sig=sig,epsi=epsi,gamma=gamma,thet=1,eps_2=1)
+    total_cost,sums,squares,tendency,homog=sig_cost(pop,err,phi,xs,show=True,bound=ideal,method=method,sig=sig,epsi=epsi,gamma=gamma,thet=1,eps_2=1)
     tendency=h_leaning(ideal,xs)
-    print(' - BASELINE: {}, {}, {}'.format(sums,squares,tendency))
-    hold=4
+    #print(' - BASELINE: {}, {}, {}'.format(sums,squares,tendency))
+    hold=3
     best=10e15
     best_sig=[]
     evolution=[]
@@ -653,7 +660,7 @@ def iterative_addition(pop,err,phi,report=5,method='max',in_spyder=False,name=''
         sig_P[np.where(costs==min(costs))[0][0]]=1
         evolution.append(min(costs))
         #print('Turn {} --> Cost: {}'.format(turn,min(costs)))
-        if (best-min(costs))<best*0.003:
+        if (best-min(costs))<best*0.005:
             hold=hold-1
             #print('[*] Hold Removed !')
         else:
@@ -663,13 +670,13 @@ def iterative_addition(pop,err,phi,report=5,method='max',in_spyder=False,name=''
         if turn%report==0: #in_spyder and
             t_b=datetime.datetime.now()
             dif=t_b-t_a
-            tc,sm,sq,tn=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
-            print('Turn #{} - total time: {} | current best: {} = ({} + {}) x {} '.format(turn,dif,tc,sm,sq,tn))
+            tc,sm,sq,tn,homog=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
+            #print('Turn #{} - total time: {} | current best: {} = ({} + {}) x {} '.format(turn,dif,tc,sm,sq,tn))
             #the_sig_plot(sig_P,pop,phi,err,method,xs,ideal,name)
     if in_spyder:
         the_sig_plot(best_sig,pop,phi,err,method,xs,ideal,name)
-    tc,sm,sq,tn=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
-    return best_sig, tc,sm,sq,tn
+    tc,sm,sq,tn,homog=sig_cost(pop,err,phi,xs,sig_P=best_sig,baseline=[sums,squares,tendency],method=method,show=True,sig=sig,epsi=epsi,gamma=gamma,thet=thet,eps_2=eps_2)
+    return best_sig, tc,sm,sq,tn,homog
 
 # plot the features of a population of Xs
 def plots_X(estims,n):
@@ -812,12 +819,12 @@ for p in populations:
         pickle.dump(results, handle, protocol=pickle.HIGHEST_PROTOCOL)"""
 
 # second test ... combinations of parameters - we use bigger populations only for the best configurations found
-segments=[[1,5000],[1000,5000],[1,1000]]
-sizes=[8000]
-sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
-methods=['max','mean','norm1_n'] #,'norm1','norm2'
+segments=[[1000,5000],[1,1000]] #[1,5000],
+sizes=[10000] # smaller=8000
+sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]} #,'smalls':[10,15,20,25,30]
+methods=['mean'] #,'norm1','norm2','max','norm1_n','mean'
 selected_pop=4
-set_to_load='populations_set_smaller.pkl'
+set_to_load='populations_set_10k_mean.pkl' #'populations_set_5000.pkl' | 'populations_set_smaller.pkl'
 try:
     with open(set_to_load, 'rb') as handle:
         populations = pickle.load(handle)
@@ -842,32 +849,44 @@ for i in segments:
             new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
             seg_pop[new]=i
 
-if True:
-    sig=[3,5,10]
+if False:
+    
+    import json
+    print_file='test_homog10k2_mean_output.txt'
+    sigma=[5,7,10]
     epsi=[100,500]
     eps_2=[5,10]
-    thet=[1,3,6]
+    thet=[4,8]
+    gamma=[0,1,3]
+    total=len(sigma)*len(epsi)*len(eps_2)*len(thet)*len(gamma)*len(methods)*len(list(populations.keys()))
     results={}
+    i=-1
     for p in populations:
         for m in methods:
-            for s in sig:
+            for s in sigma:
                 for ep in epsi:
                     for e2 in eps_2:
                         for t in thet:
-                            t_a=datetime.datetime.now()
-                            conf='_{}-{}-{}-{}'.format(int(s),ep,e2,t)
-                            name=p+'_'+m+conf
-                            #make it so that we can later have a segmented analysis ... put the costs and the errors in a database to make cross checks
-                            sig,total_cost,sums,squares,tendency=iterative_addition(populations[p],e[:,-seg_pop[p][1]:-seg_pop[p][0]],phi[-seg_pop[p][1]:-seg_pop[p][0],:],report=2,method=m,in_spyder=False,name=name,sig=s,epsi=ep,thet=t,eps_2=e2)
-                            results[name]=[sig,[total_cost,sums,squares,tendency]]
-                            print('   Run |{}| --> {} = ({} + {}) x {} '.format(name,total_cost,sums,squares,tendency))
-                            t_b=datetime.datetime.now()
-                            dif=t_b-t_a
-                            print('   - Time: {}'.format(dif))
-                            print('   - Date: {}'.format(t_b.isoformat()))
-                            print(' -------------------- ')
-                        with open('Results_deep_100122.pkl', 'wb') as handle:
-                            pickle.dump(results, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                            for ge in gamma:
+                                i=i+1
+                                file_printed = open(print_file, "a")
+                                t_a=datetime.datetime.now()
+                                conf='_{}-{}-{}-{}-{}'.format(int(s),ep,e2,t,ge)
+                                name=p+'_'+m+conf
+                                print('Start Case | {}%: {}'.format(np.round(100*i/total,2),name),file=file_printed)
+                                #make it so that we can later have a segmented analysis ... put the costs and the errors in a database to make cross checks
+                                sig,total_cost,sums,squares,tendency,homog=iterative_addition(populations[p],e[:,-seg_pop[p][1]:-seg_pop[p][0]],phi[-seg_pop[p][1]:-seg_pop[p][0],:],report=2,method=m,in_spyder=False,name=name,sig=s,epsi=ep,thet=t,eps_2=e2,gamma=ge)
+                                results[name]=[list(sig),[total_cost,sums,squares,tendency]]
+                                print('   - Run |{}| --> {} = ({} + {}) x ({} + {}) '.format(name,total_cost,sums,squares,tendency,homog), file=file_printed)
+                                t_b=datetime.datetime.now()
+                                dif=t_b-t_a
+                                print('   - Chosen Sig: '+str(np.where(sig==1)[0]), file=file_printed)
+                                print('   - Time: {}'.format(dif), file=file_printed)
+                                print('   - Date: {}'.format(t_b.isoformat()), file=file_printed)
+                                print(' -------------------- ',file=file_printed)
+                                file_printed.close()
+                        with open('Results_HomogCost10k2_mean_120122.txt', 'w') as handle:
+                            json.dump(results, handle)
             
 
 #check results -- The case of just exploring populations and methods
@@ -907,15 +926,16 @@ if False:
 #check results -- The case of deep exploring configurations
 if False:
     #import pickle5 as pickle
-    with open('Results_deep_050122.pkl', 'rb') as handle:
-        results = pickle.load(handle)
+    set_to_load='populations_set_10k_mean.pkl'
+    with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
+        results=json.load(handle)
         
-    segments=[[1,5000],[1000,5000],[1,1000]]
-    sizes=[20000]
+    segments=[[1000,5000],[1,1000]] #[1,5000],
+    sizes=[10000] # smaller=8000
     sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
-    methods=['max','mean','norm1_n'] #,'norm1','norm2'
+    methods=['mean'] #,'norm1','norm2','norm1_n'
     selected_pop=4
-    set_to_load='populations_set_refined.pkl'
+    
     try:
         with open(set_to_load, 'rb') as handle:
             populations = pickle.load(handle)
@@ -927,27 +947,112 @@ if False:
             for k in sizes:
                 new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
                 seg_pop[new]=i
-    root=r"C:\Users\sega01\Desktop\Temporal Files\LUC - Industrial PhD\Online Service\PM_DC_Reg\PM_EN_BGM\tests_optimization\code_iter_selection\test_deep_configurations"        
-    sig=[3,5,10]
-    epsi=[100,500,1000]
-    eps_2=[5,10,20]
-    thet=[1,2,3]
+    root=r"C:\Users\sega01\Desktop\Temporal Files\LUC - Industrial PhD\Online Service\PM_DC_Reg\PM_EN_BGM\tests_optimization\code_iter_selection\test_homogCost2_120122"        
+    sigma=[5,7,10]
+    epsi=[100,500]
+    eps_2=[5,10]
+    thet=[4,8]
+    gamma=[0,1,3]
+    #for n in results:
+        #n.find('-')
     for p in populations:
         for m in methods:
-            for s in sig:
+            for s in sigma:
                 for ep in epsi:
                     for e2 in eps_2:
                         for t in thet:
-                            conf='_{}-{}-{}-{}'.format(int(s),ep,e2,t)
-                            name=p+'_'+m+conf
-                            to_s=root+'\Fig_'+p+'_'+m+conf+'.png'
-                            n=len(populations[p])
-                            xs=np.linspace(0,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1]-1,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1])
-                            #t_a=datetime.datetime.now()
-                            # we get a baseline value
-                            ideal=np.ravel(e[:,-seg_pop[p][1]:-seg_pop[p][0]])+np.min(e[:,-seg_pop[p][1]:-seg_pop[p][0]])/2
-                            the_sig_plot(results[name][0],populations[p],phi[-seg_pop[p][1]:-seg_pop[p][0],:],e[:,-seg_pop[p][1]:-seg_pop[p][0]],m,xs,ideal,name,save=to_s)
-                            
+                            for ge in gamma:
+                            #try:
+                                conf='_{}-{}-{}-{}-{}'.format(int(s),ep,e2,t,ge)
+                                name=p+'_'+m+conf
+                                to_s=root+'\Fig_'+p+'_'+m+conf+'.png'
+                                n=len(populations[p])
+                                xs=np.linspace(0,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1]-1,e[:,-seg_pop[p][1]:-seg_pop[p][0]].shape[1])
+                                #t_a=datetime.datetime.now()
+                                # we get a baseline value
+                                ideal=np.ravel(e[:,-seg_pop[p][1]:-seg_pop[p][0]])+np.min(e[:,-seg_pop[p][1]:-seg_pop[p][0]])/2
+                                the_sig_plot(np.array(results[name][0]),populations[p],phi[-seg_pop[p][1]:-seg_pop[p][0],:],e[:,-seg_pop[p][1]:-seg_pop[p][0]],m,xs,ideal,name,save=to_s)
+                            #except:
+                                #print('No proper sig for: '+name)
 # make another evaluations
 # 1 . Which sizes were more used in each case -- identify prefences/tendencies
+#       In each instance trained record where it was, by first creating a dictionary... plot as a historgram
+if False:
+    #sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
+    #sizes=[8000]
+    set_to_load='populations_set_10k_mean.pkl'
+    with open(set_to_load, 'rb') as handle:
+            populations = pickle.load(handle)
+    segments=[[1000,5000],[1,1000]] #[1,5000],
+    sizes=[10000] # smaller=8000
+    sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
+    methods=['mean']
+    groups={'full':{},'smalls':{}}
+    sets_pop={}
+    for i in segments:
+        for j in sets:
+            for k in sizes:
+                new='Pop_E'+str(i[0])+'_S'+str(i[1])+'_'+j+'_m'+str(k)
+                sets_pop[new]=j
+                
+    sets_iter={}
+    sigma=[5,7,10]
+    epsi=[100,500]
+    eps_2=[5,10]
+    thet=[4,8]
+    gamma=[0,1,3]
+    for p in populations:
+        for m in methods:
+            for s in sigma:
+                for ep in epsi:
+                    for e2 in eps_2:
+                        for t in thet:   
+                            for ge in gamma:
+                                conf='_{}-{}-{}-{}-{}'.format(int(s),ep,e2,t,ge)
+                                name=p+'_'+m+conf
+                                sets_iter[name]=sets_pop[p]
+                            
+    for j in sets:   
+        for k in sets[j]:        
+            groups[j][k]=0
+       
+    with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
+        results=json.load(handle)
+                                
 
+    for n in results.keys():
+        for l in np.where(np.array(results[n][0])==1)[0]:
+            try:
+                box=sets[sets_iter[n]][int(np.floor(l*len(sets[sets_iter[n]])/sizes[0]))]
+                groups[sets_iter[n]][box]=groups[sets_iter[n]][box]+1
+            except:
+                print(' Not available: '+n)
+                
+    
+    # now the print of historgrams
+    fig = plt.figure(figsize=(15.0, 15.0))
+    i=-1
+    for s in sets:
+        i=i+1
+        name='Set: '+s
+        ax_e = fig.add_subplot(2,1,i+1)
+        x=np.arange(len(sets[s]))
+        ax_e.bar(x, list(groups[s].values()), align='center', alpha=0.5,tick_label=sets[s])
+        #ax_e.xticks(x, sets[s])
+        ax_e.set_ylabel('#')
+        ax_e.set_xlabel('Samples used to Optimize')
+        ax_e.set_title(name)
+    #fig.suptitle('Projections selected according to Samples used')
+    #fig.tight_layout()
+    plt.show()
+                        
+            
+
+#2 . Which value in each configuration provides better results ? Create one dic for each conf param and list all the results in each value taken
+#       Select the top 5 cases and plot the 
+with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
+        results=json.load(handle)
+with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
+        results=json.load(handle)
+
+z = {**x, **y}

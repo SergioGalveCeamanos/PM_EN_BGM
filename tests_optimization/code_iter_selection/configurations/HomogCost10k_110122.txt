@@ -1,0 +1,14 @@
+Used Config - to reproduce results
+	segments=[[1,5000],[1000,5000],[1,1000]]
+    	sizes=[10000]
+    	sets={'full':[10,15,20,30,40,60,100,150]}
+    	methods=['max','mean']
+	sigma=[2,5]
+    	epsi=[5,100]
+    	eps_2=[1,10]
+    	thet=[0.5,2]
+    	gamma=[1,2]
+
+File names:
+	'Results_HomogCost10k_110122.txt'
+	'populations_set_10k_max_mean.pkl'
