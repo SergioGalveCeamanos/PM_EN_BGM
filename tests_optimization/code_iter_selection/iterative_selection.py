@@ -26,6 +26,7 @@ from sklearn.linear_model import LinearRegression
 import traceback
 import copy
 import os
+import json
 if False:
     def get_index_analytics(date, ty):
         index = ty+date[5:7]+date[0:4]
@@ -1050,9 +1051,57 @@ if False:
 
 #2 . Which value in each configuration provides better results ? Create one dic for each conf param and list all the results in each value taken
 #       Select the top 5 cases and plot the 
-with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
-        results=json.load(handle)
-with open('Results_HomogCost10k2_mean_120122.txt', 'r') as handle:
-        results=json.load(handle)
+def simple_results(sig,pop,ph,err,method):
+    H_x=prepare_H(pop,sig)
+    bound=make_bounds(H_x,ph,method=method) #np.ravel(np.max(many_bounds,axis=1))
+    #up=bound+lims*np.ravel(stats['std'].values)
+    #low=bound-lims*np.ravel(stats['std'].values) 
+    dif=np.ravel(bound-err)
+    sq=dif**2
+    under_ratio=len(dif[dif<0])/err.shape[1]
+    return np.mean(np.abs(dif)),np.mean(sq),under_ratio
+        
+        
+with open('Results_HomogCost10k_120122.txt', 'r') as handle:
+        results1=json.load(handle)
+with open('Results_HomogCost10k_max_n1_120122.txt', 'r') as handle:
+        results2=json.load(handle)
+methods=['mean','max','norm1_n']
+segments_search=['_E1_','_E1000_']
+sets={'full':[10,15,20,30,40,60,100,150],'smalls':[10,15,20,25,30]}
+segments=[[1000,5000],[1,1000]]
+sizes=[10000]
+results = {**results1, **results2}
+stats={}
+set_to_load='populations_set_10k_mean.pkl'
+with open(set_to_load, 'rb') as handle:
+        populations = pickle.load(handle)
+for m in methods:
+    stats[m]={'Mean Error':0,'Mean Squared Error':0,'Ratio of Unbounded Errors':0,'Count':0}
+    #for se in segments_search:
+        #stats[m][se]={}
+for n in results:
+    for m in methods:
+        if m in n:
+            i=-1
+            for se in segments_search:
+                i=i+1
+                if se in n:
+                    for sams in sets:
+                        if sams in n:
+                            new='Pop_E'+str(segments[i][0])+'_S'+str(segments[i][1])+'_'+sams+'_m'+str(sizes[0])
+                            stats[m]
+                            mea,sq,un=simple_results(np.array(results[n][0]),populations[new],phi[-segments[i][1]:-segments[i][0],:],e[:,-segments[i][1]:-segments[i][0]],m)
+                            stats[m]['Mean Error']=stats[m]['Mean Error']+mea
+                            stats[m]['Mean Squared Error']=stats[m]['Mean Squared Error']+sq
+                            stats[m]['Ratio of Unbounded Errors']=stats[m]['Ratio of Unbounded Errors']+un
+                            stats[m]['Count']=stats[m]['Count']+1
+for m in methods:
+    stats[m]['Mean Error']=stats[m]['Mean Error']/stats[m]['Count']
+    stats[m]['Mean Squared Error']=stats[m]['Mean Squared Error']/stats[m]['Count']
+    stats[m]['Ratio of Unbounded Errors']=stats[m]['Ratio of Unbounded Errors']/stats[m]['Count']
+    stats[m].pop('Count')       
 
-z = {**x, **y}
+pd.DataFrame(stats).plot.bar(rot=0)        
+     
+                      

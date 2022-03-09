@@ -203,14 +203,15 @@ device=71471
 version='_test_6B_250121'
 
 variables=['CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val','DscgTempCirc1', 'EbmpapstFan_1_Mng.ElectrInfo_EBM_1.CurrPower',
-       'EvapTempCirc1', 'ExtTemp', 'FiltPress', 'InvInfoCirc1.Info_MotPwr','PumpPress', 'SubCoolCir1', 'SuctSH_Circ1', 'W_InTempUser',
+       'EvapTempCirc1', 'ExtTemp', 'FiltPress', 'InvInfoCirc1.Info_MotPwr','PumpPress', 'SuctSH_Circ1', 'W_InTempUser',
        'W_OutTempEvap', 'W_OutTempUser', 'WaterFlowMeter']
+
 traductor={'CondTempCirc1':'CondT', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val':'EEV','DscgTempCirc1':'DechT', 
                      'EbmpapstFan_1_Mng.ElectrInfo_EBM_1.CurrPower':'Ven','EvapTempCirc1':'EvapT', 'ExtTemp':'ExT', 
                      'FiltPress':'FP', 'InvInfoCirc1.Info_MotPwr':'Com','PumpPress':'PP', 'SubCoolCir1':'SbCoT', 
                      'SuctSH_Circ1':'SucTh', 'W_InTempUser':'Win','W_OutTempEvap':'Wev', 'W_OutTempUser':'Wout', 
-                     'WaterFlowMeter':'Wfl'}
-residuals=[0, 4, 8, 72, 100, 124, 135]
+                     'WaterFlowMeter':'Wfl','ControlRegCompAC.VarFrequencyHzMSK':'Com','EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed':'Fan'}
+residuals=[10, 16, 30, 41, 52, 86]
 dates_issue=[["2020-10-07T12:00:00.000Z","2020-10-07T12:30:00.000Z"], # Good Behaviour_ random values
        ["2020-10-07T15:00:00.000Z","2020-10-07T15:30:00.000Z"], # Good Behaviour
        ["2020-10-07T22:00:00.000Z","2020-10-07T22:30:00.000Z"], # Good Behaviour
@@ -221,27 +222,20 @@ dates_issue=[["2020-10-07T12:00:00.000Z","2020-10-07T12:30:00.000Z"], # Good Beh
        ["2020-11-05T04:00:00.000Z","2020-11-05T04:30:00.000Z"], # Good Behaviour
        ["2020-11-05T05:00:00.000Z","2020-11-05T05:30:00.000Z"], # Good Behaviour
        ["2020-11-05T06:00:00.000Z","2020-11-05T06:30:00.000Z"]] # Good Behaviour
-mso_variables={0:["PumpPress"],
-               4:["InvInfoCirc1.Info_MotPwr","Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val","SuctSH_Circ1","SubCoolCir1","EvapTempCirc1","CondTempCirc1","W_OutTempUser","W_OutTempEvap"],
-               8:['W_OutTempEvap', 'W_OutTempUser',"CondTempCirc1", 'DscgTempCirc1', 'InvInfoCirc1.Info_MotPwr', 'SubCoolCir1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'],
-               72:['InvInfoCirc1.Info_MotPwr', 'DscgTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "CondTempCirc1", 'SubCoolCir1'],
-               100:['InvInfoCirc1.Info_MotPwr', 'SuctSH_Circ1', 'EvapTempCirc1', 'SubCoolCir1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "W_OutTempUser", 'WaterFlowMeter'],
-               124:['InvInfoCirc1.Info_MotPwr', 'DscgTempCirc1', 'EvapTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val',"W_OutTempUser" , 'WaterFlowMeter'],
-               135:['InvInfoCirc1.Info_MotPwr', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'SubCoolCir1', 'W_OutTempEvap', 'W_OutTempUser', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val']}    
-
-mso_outs={0:"FiltPress", 4:"W_InTempUser", 8:'W_InTempUser', 72:'EvapTempCirc1', 100:'W_InTempUser', 124:'W_OutTempEvap', 135:"W_InTempUser"}
+mso_variables={10: ['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'DscgTempCirc1', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 16: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'], 30: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'PumpPress', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_InTempUser', 'W_OutTempUser'], 41: ['ControlRegCompAC.VarFrequencyHzMSK', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'WaterFlowMeter', 'W_OutTempUser'], 52: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 86: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_InTempUser', 'FiltPress']}
+mso_outs={10: 'EvapTempCirc1', 16: 'EvapTempCirc1', 30: 'DscgTempCirc1', 41: 'EvapTempCirc1', 52: 'EvapTempCirc1', 86: 'EvapTempCirc1'}
 mso_mean={0:-0.01337335448923473, 4:-0.16219452274855842, 8:-0.2008424606948894, 72:-0.43560362993315765, 100:0.06996989003482901, 124:-0.06893093812480769, 135:-0.10565125616369779}
 mso_std={0:0.06467767829197925, 4:0.33390002512051153, 8:1.987155736223016, 72:2.9179740835802117, 100:0.48389134225103464, 124:0.47619842372436144, 135:0.4534009536255097}
 
 #n_test=5000
 #data_train=pd.read_csv("file_data.csv",index_col=0)
-data_test=pd.read_csv("file_test.csv",index_col=0)
-data_kde=pd.read_csv("file_kde.csv",index_col=0)
+data_test=pd.read_csv('Normed_data_initial_train_filtered.csv',index_col=0)
+data_kde=pd.read_csv('subsampled_GaussIter_initialTrDt_2.csv',index_col=0)
 
-data_test=data_test.drop('timestamp',axis=1)
-data_test=data_test.drop('UnitStatus',axis=1)
-data_kde=data_kde.drop('timestamp',axis=1)
-data_kde=data_kde.drop('UnitStatus',axis=1)
+#data_test=data_test.drop('timestamp',axis=1)
+#data_test=data_test.drop('UnitStatus',axis=1)
+#data_kde=data_kde.drop('timestamp',axis=1)
+#data_kde=data_kde.drop('UnitStatus',axis=1)
 
 host='52.169.220.43:9200'
 client=Elasticsearch(hosts=[host])
@@ -270,7 +264,8 @@ for var in copy_test.columns:
     scaler.fit(telem_data)
     copy_test[var] = scaler.transform(telem_data)"""
 copy_train=copy.deepcopy(data_kde)
-from sklearn.preprocessing import MinMaxScaler
+
+"""from sklearn.preprocessing import MinMaxScaler
 scalers=[]
 for var in copy_train.columns:
     scaler = MinMaxScaler()
@@ -280,7 +275,7 @@ for var in copy_train.columns:
     data_kde[var] = scaler.transform(telem_data)
     data_test[var] = scaler.transform(data_test[var].values.reshape(-1,1))
     #telem_data=copy_test[var].values.reshape(-1,1)
-    #copy_test[var] = scaler.transform(telem_data)
+    #copy_test[var] = scaler.transform(telem_data)"""
 #########################################################################
 #cov=data_kde.cov()
 fig = plt.figure(figsize=(15.0, 15.0))
@@ -336,8 +331,42 @@ def plot_results_simple(X, Y_, means, index, title,color_iter,inds):
     plt.yticks(())
     plt.title(title)
 
+def plot_continuous_heatmap(df,title):
+    sides=df.shape[1]
+    fields=df.columns
+    t=-1
+    fig = plt.figure(figsize=(20.0, 15.0))
+    mins=0
+    maxs=[]
+    for i in range(sides-1):
+        for j in range(i+1,sides):
+            x=df[fields[i]].values
+            y=df[fields[j]].values
+            heatmap, xedges, yedges = np.histogram2d(x, y, bins=300)
+            maxs.append(np.max(heatmap))
+            #print(j)
+    for i in range(sides-1):
+        for j in range(i+1,sides):
+            t=t+1
+            splot = plt.subplot(2, 3, 1 + t)
+            x=df[fields[i]].values
+            y=df[fields[j]].values
+            heatmap, xedges, yedges = np.histogram2d(x, y, bins=300)
+            extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+            #splot.clf()
+            #plt.clf()
+            im_scale=splot.imshow(heatmap.T, extent=extent,norm=LogNorm(vmin=0.1, vmax=max(maxs)),interpolation='gaussian', origin='lower',cmap='cool', aspect="auto") #, vmin=mins, vmax=
+            splot.set_title(traductor[fields[i]]+' vs '+traductor[fields[j]])
+    fig.subplots_adjust(right=0.85)
+    cbar_ax = fig.add_axes([0.88, 0.15, 0.04, 0.7])
+    fig.colorbar(im_scale, cax=cbar_ax)
+    fig.suptitle(title)
+    plt.show()
+    
+    
+    
 print('Start')
-cont_cond=['ExtTemp', 'InvInfoCirc1.Info_MotPwr', 'W_OutTempUser', 'WaterFlowMeter']
+cont_cond=['ControlRegCompAC.VarFrequencyHzMSK','WaterFlowMeter','W_InTempUser','ExtTemp'] #,'W_OutTempUser'
 to_plot=[cont_cond[0],cont_cond[1]]
 
 # scores
@@ -355,26 +384,80 @@ def ch_score(estimator, X):
     except:
         score=-1
     return score
-def db_score(estimator, X):
+def db_score(estimator, X): #, full_set
     try:
         clusters = estimator.predict(X)
         score = metrics.davies_bouldin_score(X, clusters)
     except:
         score=-1
     return score
+#def correlation_score(X,clust):
+def fun_beta_score(a,b):
+    a_m=(np.abs(np.triu(a))-np.identity(a.shape[0])).reshape([1,-1])[0]
+    a_rank=np.take(a_m,np.where(a_m!=0)[0]).argsort().argsort()
+    b_m=(np.abs(np.triu(b))-np.identity(b.shape[0])).reshape([1,-1])[0]
+    b_rank=np.take(b_m,np.where(b_m!=0)[0]).argsort().argsort()
+    return np.sum(np.abs(a_rank-b_rank))/len(a_rank)
+def sigmoid_cluster_amount(x):
+    ''' It returns 1/(1+exp(-x)). where the values lies between zero and one '''
 
+    return 1+2/(1+np.exp(2-x/5))
+# HOW CAN WE AVOID THAT MORE CLUSTERS IS JUST BETTER SCORE ! ->
+# CV function will try to MAXIMIZE this value
+def behabiour_score(estimator, X,alpha=1,beta=1,gamma=1,n_ord=2):
+    try:
+        clusters = estimator.predict(X)
+        print(clusters)
+        regions=np.unique(clusters, return_counts=True)[0]
+        corrs={}
+        subsets={}
+        dfx=pd.DataFrame(X)
+        tot_sam=dfx.shape[0]
+        for r in regions:
+            subsets[r]=dfx.iloc[clusters==r]
+            corrs[r]=subsets[r].corr().values
+        total_scores={'clusters':[],'alpha':[],'beta':[],'gamma':[]}
+        alpha_scores={}  
+        beta_scores={}  
+        gamma_scores={}  
+        for r in regions[:-1]:
+            for l in regions[(r+1):]:
+                ind=str(r)+'_'+str(l)
+                alpha_scores[ind]=(((subsets[r].shape[0]+subsets[l].shape[0])/tot_sam)**0.5)*np.sqrt(np.sum((corrs[r]-corrs[l])**2)) #/tot_sam #np.linalg.norm(corrs[r]-corrs[l],ord=2)
+                beta_scores[ind]=(((subsets[r].shape[0]+subsets[l].shape[0])/tot_sam))*fun_beta_score(corrs[r],corrs[l]) #/tot_sam
+                gamma_scores[ind]=np.linalg.norm(subsets[r].values.mean(axis=0)-subsets[l].values.mean(axis=0),ord=2)
+                total_scores['alpha'].append(alpha_scores[ind])
+                total_scores['beta'].append(beta_scores[ind])
+                total_scores['gamma'].append(gamma_scores[ind])
+                total_scores['clusters'].append(ind)
+                sc=alpha_scores[ind]+beta_scores[ind]+gamma_scores[ind]
+                #print('  [{},{}] Score --> {} = {} + {} + {}'.format(r,l,sc,alpha_scores[ind],beta_scores[ind],gamma_scores[ind]))
+        ts_df=pd.DataFrame(total_scores)
+        num=len(list(alpha_scores.values()))
+        al=np.linalg.norm(list(alpha_scores.values()),ord=n_ord)
+        bt=np.linalg.norm(list(beta_scores.values()),ord=n_ord)
+        gm=max(list(gamma_scores.values()))/np.mean(list(gamma_scores.values()))
+        score = (alpha*al+beta*bt+gamma*gm)/sigmoid_cluster_amount(len(regions))#metrics.silhouette_score(X, clusters, metric='euclidean')#gm
+        print(' [R] Score --> {} = ({} + {} + {}) / {}'.format(score,al,bt,gm,sigmoid_cluster_amount(len(regions))))
+        #print('     Info  -->  {} + {} + {}'.format(score,al,bt,gm))
+    except:
+        score=-1
+    return score
 
 # baseline no outlayers
+#cont_cond=list(data_kde.columns)
+variables=list(data_kde.columns)
 new_df=data_kde[cont_cond]
-no_outl=new_df[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
-
-
+no_outl=new_df#[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
+# test example
+title_comp=' Behaviour Score'
+score_func=behabiour_score
 # baseline MeanShift
 bnd = estimate_bandwidth(no_outl.values, quantile=0.2, n_samples=1500)
 grid = GridSearchCV(MeanShift(),
-                    {'bandwidth': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6],'bin_seeding':[True]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                    {'bandwidth': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6,bnd*0.2,bnd*0.5,bnd*0.7,0.9*bnd,bnd*1.1,bnd*1.3,bnd*1.5,bnd*1.8],'bin_seeding':[True]},n_jobs=3,scoring=score_func) # 20-fold cross-validation
 
-grid.fit(no_outl.values,y=None)
+grid.fit(no_outl,y=None) #.values
 meanSh = MeanShift(bandwidth=grid.best_params_['bandwidth'], bin_seeding=True,n_jobs=2,max_iter=1000).fit(no_outl.values)
 groups_ms=meanSh.predict(no_outl.values)
 clusters=len(np.unique(groups_ms))
@@ -388,14 +471,14 @@ for ind in range(len(cont_cond)-1):
         tits=[cont_cond[ind],cont_cond[ind_two]]
         title='Training Data viewed with: '+traductor[cont_cond[ind]]+' & '+traductor[cont_cond[ind_two]]
         plot_results_simple(no_outl[tits].values, groups_ms, meanSh.cluster_centers_, i,title,color_iter,[ind,ind_two])
-fig.suptitle('Mean Shift')
-plt.show() 
+fig.suptitle('Mean Shift - {}'.format(title_comp))
+plt.show()
       
 # baseline K means
 grid = GridSearchCV(MiniBatchKMeans(),
-                    {'n_clusters': [5,6,7,8,9],'batch_size':[100,300,500,750,1000],'max_iter':[1200]},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                    {'n_clusters': [4,5,6,7,8,9,10],'batch_size':[100,300,500,750,1000],'max_iter':[1200]},n_jobs=3,scoring=score_func) # 20-fold cross-validation
 
-grid.fit(no_outl.values)
+grid.fit(no_outl)
 
 kmeans = MiniBatchKMeans(n_clusters=grid.best_params_['n_clusters'], batch_size=grid.best_params_['batch_size'],max_iter=5000).fit(no_outl.values)
 groups_km=kmeans.predict(no_outl.values)
@@ -409,20 +492,20 @@ for ind in range(len(cont_cond)-1):
         tits=[cont_cond[ind],cont_cond[ind_two]]
         title='Training Data viewed with: '+traductor[cont_cond[ind]]+' & '+traductor[cont_cond[ind_two]]
         plot_results_simple(no_outl[tits].values, groups_km, kmeans.cluster_centers_, i,title,color_iter,[ind,ind_two])
-fig.suptitle('K-Means')
+fig.suptitle('K-Means - {}'.format(title_comp))
 plt.show() 
 
 # BGM Method
 grid = GridSearchCV(BayesianGaussianMixture(),
-                    {'weight_concentration_prior': [0.00001,0.001,0.1,10,100,1000,2000,4000,6000,8000],'n_components':[5,6,7,8,15],'max_iter':[1200],'init_params':['random']},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                    {'weight_concentration_prior': [0.00001,0.001,0.1,10,100,1000,2000,4000,6000,8000],'n_components':[5,6,7,8,15],'max_iter':[1200],'init_params':['random']},n_jobs=3,scoring=score_func) # 20-fold cross-validation
 
-grid.fit(no_outl.values)
+grid.fit(no_outl)
 
 bnd=grid.best_params_['weight_concentration_prior']
 grid_2 = GridSearchCV(BayesianGaussianMixture(),
-                    {'weight_concentration_prior': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6],'n_components':[grid.best_params_['n_components']],'max_iter':[1200],'init_params':['random']},n_jobs=3,scoring=silhouette_score) # 20-fold cross-validation
+                    {'weight_concentration_prior': [bnd*0.4,bnd*0.6,bnd*0.8,bnd,bnd*1.2,bnd*1.4,bnd*1.6],'n_components':[grid.best_params_['n_components']],'max_iter':[1200],'init_params':['random']},n_jobs=3,scoring=score_func) # 20-fold cross-validation
 
-grid_2.fit(no_outl.values)
+grid_2.fit(no_outl)
 
 bgm = BayesianGaussianMixture(n_components=grid_2.best_params_['n_components'], random_state=42,max_iter=5000,weight_concentration_prior=grid_2.best_params_['weight_concentration_prior'],init_params='random',weight_concentration_prior_type='dirichlet_process').fit(no_outl.values)
 groups=bgm.predict(no_outl.values)
@@ -431,78 +514,49 @@ regions=np.unique(groups)
 color_iter = itertools.cycle([plt.cm.Set1(i) for i in range(len(regions))])
 i=-1
 fig = plt.figure(figsize=(20.0, 15.0))  
-plt.title('Variational Bayesian Estimation of a Gaussian Mixture')
+#plt.title('Variational Bayesian Estimation of a Gaussian Mixture')
 for ind in range(len(cont_cond)-1):
     for ind_two in range(ind+1,len(cont_cond)):
         i=i+1
         tits=[cont_cond[ind],cont_cond[ind_two]]
         title='Training Data viewed with: '+traductor[cont_cond[ind]]+' & '+traductor[cont_cond[ind_two]]
         plot_results(no_outl[tits].values, groups, bgm.means_, bgm.covariances_, i,title,color_iter,[ind,ind_two])
-fig.suptitle('Variational Bayesian Estimation of a Gaussian Mixture')
+fig.suptitle('Variational Bayesian Estimation of a Gaussian Mixture - {}'.format(title_comp))
 plt.show()    
 #########################################################################
 
-msh_sc=[silhouette_score(meanSh, no_outl.values),db_score(meanSh, no_outl.values),ch_score(meanSh, no_outl.values)/10000]
-km_sc=[silhouette_score(kmeans, no_outl.values),db_score(kmeans, no_outl.values),ch_score(kmeans, no_outl.values)/10000]
-bgm_sc=[silhouette_score(bgm, no_outl.values),db_score(bgm, no_outl.values),ch_score(bgm, no_outl.values)/10000]
+msh_sc=[silhouette_score(meanSh, no_outl.values),db_score(meanSh, no_outl.values),ch_score(meanSh, no_outl.values)/10000,behabiour_score(meanSh, no_outl)]
+km_sc=[silhouette_score(kmeans, no_outl.values),db_score(kmeans, no_outl.values),ch_score(kmeans, no_outl.values)/10000,behabiour_score(kmeans, no_outl)]
+bgm_sc=[silhouette_score(bgm, no_outl.values),db_score(bgm, no_outl.values),ch_score(bgm, no_outl.values)/10000,behabiour_score(bgm, no_outl)]
 
 # Plot bars with results of clustering metrics
 
-
 labels = ['Mean Shift','K-Means','VBGMM']
+titles=['Silhouette','DB Index','CH Index','Custom ABC']
 silh = [msh_sc[0], km_sc[0], bgm_sc[0]]
 davb = [msh_sc[1], km_sc[1], bgm_sc[1]]
 caha = [msh_sc[2], km_sc[2], bgm_sc[2]]
-
-scores_types=len(labels)
-x = np.arange(scores_types)  # the label locations
-width = 0.36  # the width of the bars
-
-fig, ax = plt.subplots()
-rects1 = ax.bar(x - 1.5*width/scores_types, silh, width/scores_types, label='Silhouette')
-rects2 = ax.bar(x - 0.5*width/scores_types, davb, width/scores_types, label='Davies-Bouldin')
-rects3 = ax.bar(x + 0.5*width/scores_types, caha, width/scores_types, label='Calinski-Harabasz')
-
-# Add some text for labels, title and custom x-axis tick labels, etc.
-ax.set_ylabel('Scores')
-ax.set_title('Scores by Clustering and Score Methods')
-ax.set_xticks(x)
-ax.set_xticklabels(labels)
-ax.legend()
-
-
-def autolabel(rects):
-    """Attach a text label above each bar in *rects*, displaying its height."""
-    for rect in rects:
-        height = rect.get_height()
-        ax.annotate('{}'.format(height),
-                    xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 3),  # 3 points vertical offset
-                    textcoords="offset points",
-                    ha='center', va='bottom')
-
-
-autolabel(rects1)
-autolabel(rects2)
-autolabel(rects3)
-fig.tight_layout()
-
+cust = [msh_sc[3], km_sc[3], bgm_sc[3]]
+total_scs=[silh,davb,caha,cust]
+fig = plt.figure()
+for i in range(len(total_scs)):
+    ax1 = fig.add_subplot(2,2,i+1)
+    ax1.bar(labels,total_scs[i])
+    ax1.title.set_text(titles[i])
+fig.suptitle('Measures with Clusters CV by {}'.format(title_comp))
 plt.show()
 
 
 ##################################################################################################
 
-mso_variables={0:["PumpPress"],
-               4:["InvInfoCirc1.Info_MotPwr","Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val","SuctSH_Circ1","SubCoolCir1","EvapTempCirc1","CondTempCirc1","W_InTempUser","W_OutTempEvap"],
-               8:['W_OutTempEvap', 'W_OutTempUser','W_InTempUser', 'DscgTempCirc1', 'InvInfoCirc1.Info_MotPwr', 'SubCoolCir1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'],
-               72:['InvInfoCirc1.Info_MotPwr', 'EvapTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "CondTempCirc1", 'SubCoolCir1'],
-               100:['InvInfoCirc1.Info_MotPwr', 'W_InTempUser','SuctSH_Circ1' , 'SubCoolCir1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "W_OutTempUser", 'WaterFlowMeter'],
-               124:['InvInfoCirc1.Info_MotPwr', 'DscgTempCirc1', 'EvapTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val',"W_OutTempUser" , 'WaterFlowMeter'],
-               135:['InvInfoCirc1.Info_MotPwr', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'SubCoolCir1', 'W_OutTempEvap', 'W_OutTempUser', "W_InTempUser"]}    
+#mso_variables={0:["PumpPress"],4:['ControlRegCompAC.VarFrequencyHzMSK',"Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val","SuctSH_Circ1","EvapTempCirc1","CondTempCirc1","W_OutTempUser","W_OutTempEvap"],8:['W_OutTempEvap', 'W_OutTempUser',"CondTempCirc1", 'DscgTempCirc1', 'ControlRegCompAC.VarFrequencyHzMSK', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'],72:['ControlRegCompAC.VarFrequencyHzMSK', 'DscgTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "CondTempCirc1"],100:['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'EvapTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', "W_OutTempUser", 'WaterFlowMeter'],124:['ControlRegCompAC.VarFrequencyHzMSK', 'DscgTempCirc1', 'EvapTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val',"W_OutTempUser" , 'WaterFlowMeter'],135:['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'W_OutTempEvap', 'W_OutTempUser', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val']}    
 
-mso_outs={0:"FiltPress", 4:"W_OutTempUser", 8:"CondTempCirc1", 72:'DscgTempCirc1', 100:'EvapTempCirc1', 124:'W_OutTempEvap', 135:'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'}
+#mso_outs={0:"FiltPress", 4:"W_OutTempUser", 8:"CondTempCirc1", 72:'DscgTempCirc1', 100:'EvapTempCirc1', 124:'W_OutTempEvap', 135:'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'}
 
-residuals=[4,8,72,100]
+mso_variables={10: ['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'DscgTempCirc1', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 16: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'], 30: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'PumpPress', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_InTempUser', 'W_OutTempUser'], 41: ['ControlRegCompAC.VarFrequencyHzMSK', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'WaterFlowMeter', 'W_OutTempUser'], 52: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 86: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_InTempUser', 'FiltPress']}
+mso_outs={10: 'EvapTempCirc1', 16: 'EvapTempCirc1', 30: 'DscgTempCirc1', 41: 'EvapTempCirc1', 52: 'EvapTempCirc1', 86: 'EvapTempCirc1'}
+groups_km=meanSh.predict(no_outl.values)
+residuals=[10, 16, 30, 41, 52, 86]
 if True:
     regions=np.unique(groups_km)
     clustering=kmeans
@@ -529,8 +583,8 @@ for mso in residuals:
         new_model={}
         X_train = train_data_groups[t][mso_variables[mso]]
         y_train = train_data_groups[t][mso_outs[mso]]
-        X_test = test_data_groups[t][mso_variables[mso]].iloc[:500]
-        y_test = test_data_groups[t][mso_outs[mso]].iloc[:500]
+        X_test = test_data_groups[t][mso_variables[mso]]#.iloc[:500]
+        y_test = test_data_groups[t][mso_outs[mso]]#.iloc[:500]
         
         lin_reg_mod = ElasticNetCV(l1_ratio=[.1, .2, .4, .5, ],cv=30,n_jobs=3,max_iter=2000)
         
@@ -557,8 +611,8 @@ for mso in residuals:
 
 
 fig = plt.figure(figsize=(15.0, 20.0))
-colors=['r','orange','y','g','purple']
-
+colors=['r','orange','y','g','purple','b','brown','gold','pink','grey']
+# plot the baseline and the corresponding forecasts
 check_df=[]
 t=-1
 for mso in residuals:
@@ -569,21 +623,65 @@ for mso in residuals:
         df=pd.DataFrame({'a':models[mso][j]['pred'],'b':models[mso][j]['y_test'].values})
         df=df.sort_values('b')
         check_df.append(df)
-        ax1 = fig.add_subplot(4,1,t+1)
+        
         if j==0:
-            ax1.plot(x,df['b'].values,c='b',linewidth=2, alpha=0.5, label='Measured')
+            ax1 = fig.add_subplot(6,1,t+1)
+            ax1.plot(x,df['b'].values,c='b',linewidth=2, alpha=0.5, label='Base')
+            ax1.title.set_text('MSO #'+str(mso)+' | Target: '+traductor[mso_outs[mso]])
         else:
             ax1.plot(x,df['b'].values,c='b',linewidth=2, alpha=0.5)
-        ax1.plot(x,df['a'].values,c=colors[j],linewidth=2, alpha=0.7, label='Prediction_Region_'+str(j))
+        ax1.plot(x,df['a'].values,c=colors[j],linewidth=2, alpha=0.7, label='G '+str(j))
         ax1.legend()
         point=point+len(models[mso][j]['y_test'].values)
-        ax1.title.set_text('MSO #'+str(mso)+' | Target: '+traductor[mso_outs[mso]])
-fig.suptitle("Resulting fit for test data") 
+        ax1.title.set_text(titles[i])
+    ax1.set_xlim(0,point)    
+fig.suptitle("Resulting fit for Gm - Cv by {}".format(title_comp)) 
 plt.show()
 
+#plot histogram of errors
 fig = plt.figure(figsize=(15.0, 20.0))
+check_df=[]
+dic_mean={}
+dic_std={}
 for mso in residuals:
+    name='MSO_{}'.format(mso)
+    dic_mean[name]=[]
+    dic_std[name]=[]
+t=-1
+for mso in residuals:
+    t=t+1
+    point=0
+    for j in regions:
+        #x=np.arange(start=point, stop=point+len(models[mso][j]['y_test'].values), step=1)
+        #df=pd.DataFrame({'a':models[mso][j]['pred'],'b':models[mso][j]['y_test'].values})
+        #df=df.sort_values('b')
+        #check_df.append(df)
+        name='MSO_{}'.format(mso)
+        dic_mean[name].append(np.mean(models[mso][j]['y_test'].values-models[mso][j]['pred']))
+        dic_std[name].append(np.std(models[mso][j]['y_test'].values-models[mso][j]['pred']))
+        x=models[mso][j]['y_test'].values-models[mso][j]['pred']
+        if j==0:
+            ax1 = fig.add_subplot(3,2,t+1)
+            ax1.hist(x, 100, density=True, facecolor=colors[j], alpha=0.5, label='G '+str(j))
+        else:
+            ax1.hist(x, 100, density=True, facecolor=colors[j], alpha=0.5, label='G '+str(j))
+    ax1.legend()
+    ax1.grid(True)
+    ax1.title.set_text('MSO_{} Error Distribution'.format(mso))
+    #point=point+len(models[mso][j]['y_test'].values)
+    #ax1.set_xlim(0,point)    
+fig.suptitle("Resulting Error Histogram for CTTD - {}".format(title_comp)) 
+plt.show()
 
+for mso in residuals:
+    name='MSO_{}'.format(mso)
+    print('MSO {}: mean error={} | mean std={}'.format(mso,np.mean(dic_mean[name]),np.mean(dic_std[name])))
+    
+#plot weight changes in eac
+fig = plt.figure(figsize=(15.0, 20.0))
+t=-1
+for mso in residuals:
+    t=t+1
     # Weights per region
     coefs={}
     for j in regions:
@@ -601,7 +699,8 @@ for mso in residuals:
     x = np.arange(len(labels))  # the label locations
     width = 0.8  # the width of the bars
     
-    fig, ax = plt.subplots()
+    #fig, ax = plt.subplots()
+    ax=plt.subplot(2, 3, 1 + t)
     rects={}
     N=len(regions)
     for j in regions:
@@ -615,10 +714,10 @@ for mso in residuals:
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.legend()
+fig.suptitle('Weight distribution with Custom Samples - {}'.format(title_comp))   
     
-    
-    def autolabel(rects):
-        """Attach a text label above each bar in *rects*, displaying its height."""
+"""def autolabel(rects):
+        #Attach a text label above each bar in *rects*, displaying its height.
         for rect in rects:
             height = rect.get_height()
             ax.annotate('{}'.format(height),
@@ -631,7 +730,7 @@ for mso in residuals:
         autolabel(rects[j])
 
     fig.tight_layout()
-    plt.show()
+    plt.show()"""
 """
 #easy plot for doc
 fig = plt.figure(figsize=(20.0, 10.0))
@@ -792,3 +891,20 @@ if False:
         #file=r"\Errors Distributions.png"
         #fig.savefig(root+file)"""
    
+######################################### 
+
+# data_kde will be filtered by the groups already available - doesnt really matter which yet
+group_a_ind=no_outl.iloc[groups==1].index
+group_b_ind=no_outl.iloc[groups==2].index
+
+group_a=data_kde.loc[group_a_ind]
+group_b=data_kde.loc[group_b_ind]
+
+
+
+
+
+
+
+
+

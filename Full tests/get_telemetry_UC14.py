@@ -239,15 +239,14 @@ if True:
          'ExtTemp']
         
         dates_goal = [["2021-05-19T15:45:00.000Z","2021-05-25T02:10:00.000Z"],["2021-05-25T17:00:00.000Z","2021-05-30T07:10:00.000Z"],["2021-06-01T00:45:00.000Z","2021-06-07T12:10:00.000Z"],["2021-06-23T17:00:00.000Z","2021-06-30T23:00:00.000Z"],["2021-07-01T01:00:00.000Z","2021-07-10T01:00:00.000Z"],["2021-07-10T01:00:00.000Z","2021-07-21T10:00:00.000Z"]]#["2021-05-19T15:45:00.000Z","2021-05-25T02:10:00.000Z"],  
-        names_analysis = ['models_error', 'low_bounds', 'high_bounds',
-            'activations', 'confidence', 'group_prob', 'timestamp']
+        names_analysis = ['models_error', 'group_prob', 'timestamp']
         host = 'https://elastic-telemetrydb-prod-weu-001.es.westeurope.azure.elastic-cloud.com:9243'
         client = Elasticsearch(hosts=[host], http_auth=('laudaelastic', 'BBQvlxaXFKHldJjQ3At1'))
-        # data_issue=get_analytics(client,d[0],d[1],device,v,names_analysis)
+        #data_issue=get_analytics(client,d[0],d[1],device,v,names_analysis)
         data_iss = []
         for d in dates_goal:
             print('- Getting the analitics from '+d[0])
-            #data_iss.append(get_analytics(client, d[0], d[1], device, v, names_analysis))
+            data_iss.append(get_analytics(client, d[0], d[1], device, v, names_analysis))
         mso_set = [10, 16, 30, 41, 52, 86]
         faults = {1: 'fc1', 2: 'fc2', 3: 'fc3', 4: 'fc4', 6: 'fc5', 8: 'fl1', 10: 'fo2', 11: 'fo3', 12: 'fo4', 13: 'fo5',
             19: 'fs1', 20: 'fs2', 21: 'fs3', 22: 'fs5', 23: 'fs6', 24: 'fs8', 25: 'fs9', 26: 'fs10', 27: 'fs11', 28: 'fs12'}
@@ -268,7 +267,7 @@ if True:
             bb.append(training_data_stats[var]['min']+1000*training_data_stats[var]['std']+((i+1)/(bin_size-1))*(training_data_stats[var]['max']-training_data_stats[var]['min']))                 
             bins[var]= bb"""
         
-        """activations = []
+        activations = []
         confidences = []
         error = []
         high = []
@@ -278,19 +277,11 @@ if True:
         for i in range(len(mso_set)):
             for d in range(len(data_iss)):
                 if d == 0:
-                    activations.append(data_iss[d][i]['activations'])
-                    confidences.append(data_iss[d][i]['confidence'])
                     error.append(data_iss[d][i]['models_error'])
-                    high.append(data_iss[d][i]['high_bounds'])
-                    low.append(data_iss[d][i]['low_bounds'])
                     groups.append(data_iss[d][i]['group_prob'])
                 else:
-                    activations[i] = activations[i]+data_iss[d][i]['activations']
-                    confidences[i] = confidences[i]+data_iss[d][i]['confidence']
                     error[i] = error[i]+data_iss[d][i]['models_error']
-                    high[i] = high[i]+data_iss[d][i]['high_bounds']
-                    low[i] = low[i]+data_iss[d][i]['low_bounds']
-                    groups[i] = groups[i]+data_iss[d][i]['group_prob']"""
+                    groups[i] = groups[i]+data_iss[d][i]['group_prob']
         
         telemetry={}
         telemetry={'timestamp':[]}
@@ -299,11 +290,13 @@ if True:
         #times = data_iss[0][0]['timestamp']
         #for d in data_iss[1:]:
             #times = times+d[0]['timestamp']
-        root_autosave='telemetry_'
-        print_file='Telemtry_gather_log.txt'
+        root_autosave='telemetry_filtered_'
+        print_file='Telemtry_filtered_gather_log.txt'
         first=True
+        time_slot=-1
         for t in dates_goal:
             # split data
+            time_slot=time_slot+1
             splited=[]
             start=t[0]
             end=t[1]
@@ -344,6 +337,7 @@ if True:
                             if var==var_names[0]:
                                 new_times=list(gathered[var].keys())
                                 interset = set(new_times)
+                                interset = interset.intersection(data_iss[time_slot][0]['timestamp'])
                             else:
                                 interset = interset.intersection(list(gathered[var].keys()))
                                 update = list(interset)
@@ -414,8 +408,8 @@ if True:
         copy_train=copy.deepcopy(data_train)
         
         normed_train_data_o = norm(data_train,train_stats)
-        file_normed='normed_full_telemetry.csv'
-        file_telemetry='full_telemetry.csv'
+        file_normed='normed_full_telemetry_filtered.csv'
+        file_telemetry='full_telemetry_filtered.csv'
         normed_train_data_o.to_csv(file_normed)
         data_train.to_csv(file_telemetry)
         # prepare data to form phi and e --> Filtered to 1 region from 1 MSO
