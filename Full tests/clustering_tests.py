@@ -229,7 +229,8 @@ mso_std={0:0.06467767829197925, 4:0.33390002512051153, 8:1.987155736223016, 72:2
 
 #n_test=5000
 #data_train=pd.read_csv("file_data.csv",index_col=0)
-data_test=pd.read_csv('Normed_data_initial_train_filtered.csv',index_col=0)
+test_dates=[]
+data_test=pd.read_csv('normed_full_telemetry_filtered.csv',index_col=0)
 data_kde=pd.read_csv('subsampled_GaussIter_initialTrDt_2.csv',index_col=0)
 
 #data_test=data_test.drop('timestamp',axis=1)
@@ -431,7 +432,7 @@ def behabiour_score(estimator, X,alpha=1,beta=1,gamma=1,n_ord=2):
                 total_scores['gamma'].append(gamma_scores[ind])
                 total_scores['clusters'].append(ind)
                 sc=alpha_scores[ind]+beta_scores[ind]+gamma_scores[ind]
-                #print('  [{},{}] Score --> {} = {} + {} + {}'.format(r,l,sc,alpha_scores[ind],beta_scores[ind],gamma_scores[ind]))
+                print('  [{},{}] Score --> {} = {} + {} + {}'.format(r,l,sc,alpha_scores[ind],beta_scores[ind],gamma_scores[ind]))
         ts_df=pd.DataFrame(total_scores)
         num=len(list(alpha_scores.values()))
         al=np.linalg.norm(list(alpha_scores.values()),ord=n_ord)
@@ -450,8 +451,8 @@ variables=list(data_kde.columns)
 new_df=data_kde[cont_cond]
 no_outl=new_df#[(np.abs(stats.zscore(new_df)) < 3).all(axis=1)]
 # test example
-title_comp=' Behaviour Score'
-score_func=behabiour_score
+title_comp=' Silhouette Score'
+score_func=silhouette_score
 # baseline MeanShift
 bnd = estimate_bandwidth(no_outl.values, quantile=0.2, n_samples=1500)
 grid = GridSearchCV(MeanShift(),
@@ -555,15 +556,15 @@ plt.show()
 
 mso_variables={10: ['Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'SuctSH_Circ1', 'ControlRegCompAC.VarFrequencyHzMSK', 'CondTempCirc1', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'DscgTempCirc1', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 16: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val'], 30: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'PumpPress', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_InTempUser', 'W_OutTempUser'], 41: ['ControlRegCompAC.VarFrequencyHzMSK', 'DscgTempCirc1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'WaterFlowMeter', 'W_OutTempUser'], 52: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'CondTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_OutTempUser', 'W_InTempUser'], 86: ['ControlRegCompAC.VarFrequencyHzMSK', 'SuctSH_Circ1', 'DscgTempCirc1', 'Data_EVD_Emb_1.EVD.Variables.EEV_PosPercent.Val', 'EbmpapstFan_1_Mng.InfoSpeed_EBM_1.CurrSpeed', 'ExtTemp', 'W_OutTempEvap', 'W_InTempUser', 'FiltPress']}
 mso_outs={10: 'EvapTempCirc1', 16: 'EvapTempCirc1', 30: 'DscgTempCirc1', 41: 'EvapTempCirc1', 52: 'EvapTempCirc1', 86: 'EvapTempCirc1'}
-groups_km=meanSh.predict(no_outl.values)
+groups_km=bgm.predict(no_outl.values)
 residuals=[10, 16, 30, 41, 52, 86]
 if True:
     regions=np.unique(groups_km)
-    clustering=kmeans
+    clustering=bgm
     models={}
     pred_weighted={}
-    train_groups=clustering.predict(data_kde[cont_cond].values)
-    test_groups=clustering.predict(data_test[cont_cond].values)
+    train_groups=clustering.predict(data_kde.values) #[cont_cond]
+    test_groups=clustering.predict(data_test.values) #[cont_cond]
     #probs_test=clustering.predict_proba(data_test[cont_cond].values)
     train_data_groups={}
     test_data_groups={}
@@ -633,7 +634,7 @@ for mso in residuals:
         ax1.plot(x,df['a'].values,c=colors[j],linewidth=2, alpha=0.7, label='G '+str(j))
         ax1.legend()
         point=point+len(models[mso][j]['y_test'].values)
-        ax1.title.set_text(titles[i])
+    ax1.title.set_text('MSO #'+str(mso))
     ax1.set_xlim(0,point)    
 fig.suptitle("Resulting fit for Gm - Cv by {}".format(title_comp)) 
 plt.show()
